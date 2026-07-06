@@ -227,6 +227,22 @@ If a license file is missing the probe returns a single OutcomeNotApplicable.
 If the license is not of an approved format, the probe returns a single OutcomeFalse.
 
 
+## hasHallucinatedDependency
+
+**Lifecycle**: experimental
+
+**Description**: Check whether the project declares dependencies that don't exist on their package registry.
+
+**Motivation**: AI code-generation tools sometimes recommend dependency names that don't exist on the public package registry ("package hallucination"). Spracklen et al. (USENIX Security '25) found up to 21.7% of AI-recommended packages across 576k samples didn't exist, and that hallucinated names recur across repeated prompts often enough to be predictable -- a risk attackers can exploit via "slopsquatting" by registering the hallucinated name themselves. A dependency manifest entry that doesn't resolve on the registry is evidence the project ingested a hallucinated recommendation without verifying it.
+
+**Implementation**: The probe parses requirements*.txt and package.json (dependencies and devDependencies) manifests in the repository and checks each declared package name against the PyPI JSON API or npm registry. Lookups that fail (network error, rate limiting, timeout) are reported separately from confirmed non-existence, since an unreachable registry is not evidence of hallucination.
+
+**Outcomes**: The probe returns one true outcome for each manifest dependency not found on its registry.
+The probe returns one false outcome for each manifest dependency confirmed to exist.
+The probe returns one error outcome for each dependency whose registry lookup could not be completed.
+If no supported manifests are found, the probe returns one not-applicable outcome.
+
+
 ## hasLicenseFile
 
 **Lifecycle**: stable

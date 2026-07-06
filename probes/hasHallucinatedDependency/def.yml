@@ -1,0 +1,50 @@
+# Copyright 2026 OpenSSF Scorecard Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+id: hasHallucinatedDependency
+lifecycle: experimental
+short: Check whether the project declares dependencies that don't exist on their package registry.
+motivation: >
+  AI code-generation tools sometimes recommend dependency names that don't exist on the public
+  package registry ("package hallucination"). Spracklen et al. (USENIX Security '25) found up to
+  21.7% of AI-recommended packages across 576k samples didn't exist, and that hallucinated names
+  recur across repeated prompts often enough to be predictable -- a risk attackers can exploit via
+  "slopsquatting" by registering the hallucinated name themselves. A dependency manifest entry that
+  doesn't resolve on the registry is evidence the project ingested a hallucinated recommendation
+  without verifying it.
+implementation: >
+  The probe parses requirements*.txt and package.json (dependencies and devDependencies) manifests
+  in the repository and checks each declared package name against the PyPI JSON API or npm registry.
+  Lookups that fail (network error, rate limiting, timeout) are reported separately from confirmed
+  non-existence, since an unreachable registry is not evidence of hallucination.
+outcome:
+  - The probe returns one true outcome for each manifest dependency not found on its registry.
+  - The probe returns one false outcome for each manifest dependency confirmed to exist.
+  - The probe returns one error outcome for each dependency whose registry lookup could not be completed.
+  - If no supported manifests are found, the probe returns one not-applicable outcome.
+remediation:
+  onOutcome: True
+  effort: Low
+  text:
+    - Verify that this dependency name is correct and was not hallucinated by an AI code-generation tool.
+    - If the name is wrong, replace it with the intended package; if no such package should exist, remove the entry.
+    - Do not install a same-named package found by an AI tool without independently verifying its publisher and provenance -- an attacker may have registered the hallucinated name ("slopsquatting").
+ecosystem:
+  languages:
+    - python
+    - javascript
+  clients:
+    - github
+    - gitlab
+    - localdir

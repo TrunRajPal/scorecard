@@ -1,5 +1,6 @@
 # binary.
 scorecard
+scorecard-bin
 !pkg/scorecard
 attestor/scorecard-attestor
 scorecard.docker

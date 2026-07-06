@@ -33,6 +33,7 @@ import (
 	"github.com/ossf/scorecard/v5/probes/hasDangerousWorkflowScriptInjection"
 	"github.com/ossf/scorecard/v5/probes/hasDangerousWorkflowUntrustedCheckout"
 	"github.com/ossf/scorecard/v5/probes/hasFSFOrOSIApprovedLicense"
+	"github.com/ossf/scorecard/v5/probes/hasHallucinatedDependency"
 	"github.com/ossf/scorecard/v5/probes/hasLicenseFile"
 	"github.com/ossf/scorecard/v5/probes/hasNoGitHubWorkflowPermissionUnknown"
 	"github.com/ossf/scorecard/v5/probes/hasOSVVulnerabilities"
@@ -91,6 +92,9 @@ var (
 	}
 	Fuzzing = []ProbeImpl{
 		fuzzed.Run,
+	}
+	HallucinatedDependencies = []ProbeImpl{
+		hasHallucinatedDependency.Run,
 	}
 	Packaging = []ProbeImpl{
 		packagedWithAutomatedWorkflow.Run,
@@ -190,6 +194,7 @@ func init() {
 		DangerousWorkflows,
 		DependencyToolUpdates,
 		Fuzzing,
+		HallucinatedDependencies,
 		License,
 		Maintained,
 		Packaging,

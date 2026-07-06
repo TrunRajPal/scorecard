@@ -331,6 +331,12 @@ func assignRawData(probeCheckName string, request *checker.CheckRequest, ret *Re
 			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
 		}
 		ret.RawResults.FuzzingResults = rawData
+	case checks.CheckHallucinatedDependencies:
+		rawData, err := raw.HallucinatedDependencies(request)
+		if err != nil {
+			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		}
+		ret.RawResults.HallucinatedDependenciesResults = rawData
 	case checks.CheckLicense:
 		rawData, err := raw.License(request)
 		if err != nil {

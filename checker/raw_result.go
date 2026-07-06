@@ -27,27 +27,28 @@ import (
 //
 //nolint:govet
 type RawResults struct {
-	BinaryArtifactResults       BinaryArtifactData
-	BranchProtectionResults     BranchProtectionsData
-	CIIBestPracticesResults     CIIBestPracticesData
-	CITestResults               CITestData
-	CodeReviewResults           CodeReviewData
-	ContributorsResults         ContributorsData
-	DangerousWorkflowResults    DangerousWorkflowData
-	DependencyUpdateToolResults DependencyUpdateToolData
-	FuzzingResults              FuzzingData
-	LicenseResults              LicenseData
-	SBOMResults                 SBOMData
-	MaintainedResults           MaintainedData
-	Metadata                    MetadataData
-	PackagingResults            PackagingData
-	PinningDependenciesResults  PinningDependenciesData
-	SASTResults                 SASTData
-	SecurityPolicyResults       SecurityPolicyData
-	SignedReleasesResults       SignedReleasesData
-	TokenPermissionsResults     TokenPermissionsData
-	VulnerabilitiesResults      VulnerabilitiesData
-	WebhookResults              WebhooksData
+	BinaryArtifactResults           BinaryArtifactData
+	BranchProtectionResults         BranchProtectionsData
+	CIIBestPracticesResults         CIIBestPracticesData
+	CITestResults                   CITestData
+	CodeReviewResults               CodeReviewData
+	ContributorsResults             ContributorsData
+	DangerousWorkflowResults        DangerousWorkflowData
+	DependencyUpdateToolResults     DependencyUpdateToolData
+	FuzzingResults                  FuzzingData
+	HallucinatedDependenciesResults HallucinatedDependenciesData
+	LicenseResults                  LicenseData
+	SBOMResults                     SBOMData
+	MaintainedResults               MaintainedData
+	Metadata                        MetadataData
+	PackagingResults                PackagingData
+	PinningDependenciesResults      PinningDependenciesData
+	SASTResults                     SASTData
+	SecurityPolicyResults           SecurityPolicyData
+	SignedReleasesResults           SignedReleasesData
+	TokenPermissionsResults         TokenPermissionsData
+	VulnerabilitiesResults          VulnerabilitiesData
+	WebhookResults                  WebhooksData
 }
 
 type MetadataData struct {
@@ -126,6 +127,28 @@ const (
 type PinningDependenciesData struct {
 	Dependencies     []Dependency
 	ProcessingErrors []ElementError // jobs or files with errors may have incomplete results
+}
+
+// HallucinatedDependenciesData represents dependencies extracted from
+// manifest files (requirements*.txt, package.json), checked for existence
+// against their ecosystem's public package registry.
+type HallucinatedDependenciesData struct {
+	Dependencies []HallucinatedDependency
+}
+
+// HallucinatedDependency represents a single manifest-declared dependency
+// and the outcome of checking whether it exists on the public registry for
+// its ecosystem.
+type HallucinatedDependency struct {
+	Name      string
+	Ecosystem string // "pypi" or "npm"
+	Location  *File
+	// Exists is nil if the registry lookup could not be completed (network
+	// error, rate limit, etc.). A lookup failure is not evidence of
+	// hallucination and must not be scored as such -- see Error.
+	Exists *bool
+	// Error holds the lookup failure message, set only when Exists is nil.
+	Error *string
 }
 
 // Dependency represents a dependency.

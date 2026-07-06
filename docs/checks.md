@@ -360,6 +360,31 @@ is therefore not a definitive indication that the project is at risk.
 **Remediation steps**
 - Integrate the project with OSS-Fuzz by following the instructions [here](https://google.github.io/oss-fuzz/).
 
+## Hallucinated-Dependencies 
+
+Risk: `High`  (supply-chain compromise via "slopsquatting")
+
+This check determines whether dependencies declared in `requirements*.txt` or
+`package.json` manifests actually exist on their ecosystem's public package
+registry (PyPI, npm). AI code-generation tools sometimes recommend dependency
+names that don't exist ("package hallucination"): Spracklen et al. (USENIX
+Security '25) found up to 21.7% of AI-recommended packages across 576k samples
+didn't exist, and that hallucinated names recur across repeated prompts often
+enough to be predictable. This predictability enables "slopsquatting": an
+attacker registers the hallucinated name so that any project which later
+installs it pulls in attacker-controlled code.
+
+A manifest entry that doesn't resolve on the registry is evidence the project
+ingested a hallucinated recommendation without verifying it. A failed registry
+lookup (network error, rate limit, timeout) is reported separately and is not
+scored as hallucination, since it is not evidence of anything.
+ 
+
+**Remediation steps**
+- Verify that the dependency name is correct and was not hallucinated by an AI code-generation tool.
+- If the name is wrong, replace it with the intended package; if no such package should exist, remove the entry.
+- Do not install a same-named package found by an AI tool without independently verifying its publisher and provenance -- an attacker may have registered the hallucinated name.
+
 ## License 
 
 Risk: `Low` (possible impediment to security review)
