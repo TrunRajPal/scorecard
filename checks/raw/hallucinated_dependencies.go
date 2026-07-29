@@ -50,10 +50,16 @@ var pypiNormalizeRe = regexp.MustCompile(`[-_.]+`)
 // the whole check.
 var registryHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-// HallucinatedDependencies checks dependency manifests (requirements*.txt,
-// package.json) for packages that don't exist on their ecosystem's public
-// registry -- evidence of an AI-hallucinated package name (Spracklen et
-// al., USENIX Sec'25: up to 21.7% of AI-recommended packages didn't exist).
+// HallucinatedDependencies checks both direct dependency manifests
+// (requirements*.txt, package.json) and lockfiles (package-lock.json,
+// poetry.lock, Pipfile.lock) for packages that don't exist on their
+// ecosystem's public registry. A direct-manifest entry that doesn't exist
+// is evidence of an AI-hallucinated package name (Spracklen et al., USENIX
+// Sec'25: up to 21.7% of AI-recommended packages didn't exist); a
+// lockfile entry that doesn't exist is a different failure mode --
+// evidence of lockfile-integrity issues, not hallucination -- see
+// checker.HallucinatedDependency.Transient and
+// hallucinated_dependencies_lockfile.go.
 func HallucinatedDependencies(c *checker.CheckRequest) (checker.HallucinatedDependenciesData, error) {
 	var results checker.HallucinatedDependenciesData
 
@@ -61,6 +67,15 @@ func HallucinatedDependencies(c *checker.CheckRequest) (checker.HallucinatedDepe
 		return checker.HallucinatedDependenciesData{}, err
 	}
 	if err := collectPackageJSON(c, &results); err != nil {
+		return checker.HallucinatedDependenciesData{}, err
+	}
+	if err := collectNpmLockfile(c, &results); err != nil {
+		return checker.HallucinatedDependenciesData{}, err
+	}
+	if err := collectPoetryLock(c, &results); err != nil {
+		return checker.HallucinatedDependenciesData{}, err
+	}
+	if err := collectPipfileLock(c, &results); err != nil {
 		return checker.HallucinatedDependenciesData{}, err
 	}
 

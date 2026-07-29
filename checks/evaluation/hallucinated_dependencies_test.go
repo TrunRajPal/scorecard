@@ -73,6 +73,42 @@ func TestHallucinatedDependencies(t *testing.T) {
 			},
 		},
 		{
+			name: "two graph anomalies deduct one point (half weight of a direct hallucination)",
+			findings: []finding.Finding{
+				{Probe: hasHallucinatedDependency.Probe, Outcome: finding.OutcomeFalse},
+				graphAnomalyFinding(),
+				graphAnomalyFinding(),
+			},
+			result: scut.TestReturn{
+				Score:        9,
+				NumberOfWarn: 2,
+			},
+		},
+		{
+			name: "one graph anomaly alone rounds down to no deduction",
+			findings: []finding.Finding{
+				{Probe: hasHallucinatedDependency.Probe, Outcome: finding.OutcomeFalse},
+				graphAnomalyFinding(),
+			},
+			result: scut.TestReturn{
+				Score:        10,
+				NumberOfWarn: 1,
+			},
+		},
+		{
+			name: "direct hallucination and graph anomaly combine, not conflated",
+			findings: []finding.Finding{
+				{Probe: hasHallucinatedDependency.Probe, Outcome: finding.OutcomeTrue},
+				graphAnomalyFinding(),
+				graphAnomalyFinding(),
+			},
+			result: scut.TestReturn{
+				// 1 direct hallucination (-1) + 2 graph anomalies (-1 at half weight) = 8.
+				Score:        8,
+				NumberOfWarn: 3,
+			},
+		},
+		{
 			name: "lookup error does not affect score",
 			findings: []finding.Finding{
 				{Probe: hasHallucinatedDependency.Probe, Outcome: finding.OutcomeFalse},
@@ -112,4 +148,12 @@ func hallucinatedFindings(t *testing.T, n int) []finding.Finding {
 		}
 	}
 	return findings
+}
+
+func graphAnomalyFinding() finding.Finding {
+	return finding.Finding{
+		Probe:   hasHallucinatedDependency.Probe,
+		Outcome: finding.OutcomeTrue,
+		Values:  map[string]string{hasHallucinatedDependency.TransientKey: "true"},
+	}
 }

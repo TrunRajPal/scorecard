@@ -129,20 +129,35 @@ type PinningDependenciesData struct {
 	ProcessingErrors []ElementError // jobs or files with errors may have incomplete results
 }
 
-// HallucinatedDependenciesData represents dependencies extracted from
-// manifest files (requirements*.txt, package.json), checked for existence
-// against their ecosystem's public package registry.
+// HallucinatedDependenciesData represents dependencies extracted from both
+// direct manifest files (requirements*.txt, package.json) and lockfiles
+// (package-lock.json, poetry.lock, Pipfile.lock), checked for existence
+// against their ecosystem's public package registry. See the Transient
+// field on HallucinatedDependency for why these two sources are kept
+// distinguishable rather than merged into one count.
 type HallucinatedDependenciesData struct {
 	Dependencies []HallucinatedDependency
 }
 
-// HallucinatedDependency represents a single manifest-declared dependency
-// and the outcome of checking whether it exists on the public registry for
-// its ecosystem.
+// HallucinatedDependency represents a single dependency (from either a
+// direct manifest or a lockfile) and the outcome of checking whether it
+// exists on the public registry for its ecosystem.
 type HallucinatedDependency struct {
 	Name      string
 	Ecosystem string // "pypi" or "npm"
 	Location  *File
+	// Transient is true if this entry came from a lockfile's resolved
+	// dependency graph rather than a direct manifest. This is NOT the same
+	// failure mode as a direct-manifest hallucination: a transient entry is
+	// resolved automatically by the package manager from an
+	// already-published parent package's own metadata, so no human or AI
+	// typed that name into this project. A transient entry that fails to
+	// resolve indicates lockfile integrity issues (tampering, a hand-edited
+	// or corrupted lockfile, or an AI tool editing a lockfile directly) --
+	// a real but distinct risk from hallucination in Spracklen et al.'s
+	// sense. Callers must not merge Transient and non-Transient findings
+	// into a single count.
+	Transient bool
 	// Exists is nil if the registry lookup could not be completed (network
 	// error, rate limit, etc.). A lookup failure is not evidence of
 	// hallucination and must not be scored as such -- see Error.

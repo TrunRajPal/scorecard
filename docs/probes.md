@@ -234,13 +234,14 @@ If the license is not of an approved format, the probe returns a single OutcomeF
 **Description**: Check whether the project declares dependencies that don't exist on their package registry.
 
 **Motivation**: AI code-generation tools sometimes recommend dependency names that don't exist on the public package registry ("package hallucination"). Spracklen et al. (USENIX Security '25) found up to 21.7% of AI-recommended packages across 576k samples didn't exist, and that hallucinated names recur across repeated prompts often enough to be predictable -- a risk attackers can exploit via "slopsquatting" by registering the hallucinated name themselves. A dependency manifest entry that doesn't resolve on the registry is evidence the project ingested a hallucinated recommendation without verifying it.
+Separately, the probe also checks the *resolved* dependency graph via lockfiles (package-lock.json, poetry.lock, Pipfile.lock). This is a different failure mode, not a deeper version of the same one: a lockfile entry is resolved automatically by the package manager from an already-published parent package's own metadata, so no human or AI typed that name into the project. A lockfile entry that fails to resolve indicates a lockfile-integrity problem (tampering, a hand-edited or corrupted lockfile, or an AI tool editing the lockfile directly), not hallucination in the sense above. Findings from the two sources are never merged into one count -- see the `transient` value on each finding.
 
-**Implementation**: The probe parses requirements*.txt and package.json (dependencies and devDependencies) manifests in the repository and checks each declared package name against the PyPI JSON API or npm registry. Lookups that fail (network error, rate limiting, timeout) are reported separately from confirmed non-existence, since an unreachable registry is not evidence of hallucination.
+**Implementation**: The probe parses requirements*.txt and package.json (dependencies and devDependencies) manifests, plus package-lock.json (npm lockfileVersion 1 and 2/3), poetry.lock, and Pipfile.lock (default and develop sections), and checks each declared package name against the PyPI JSON API or npm registry. Lookups that fail (network error, rate limiting, timeout) are reported separately from confirmed non-existence, since an unreachable registry is not evidence of hallucination. A dependency's position within a lockfile tree does not reliably indicate whether it was declared directly or pulled in transitively (npm hoisting in particular makes this unreliable), so every lockfile entry is treated as belonging to the resolved graph as a whole, distinct from the direct manifests. yarn.lock is not yet supported.
 
-**Outcomes**: The probe returns one true outcome for each manifest dependency not found on its registry.
-The probe returns one false outcome for each manifest dependency confirmed to exist.
+**Outcomes**: The probe returns one true outcome for each direct-manifest dependency not found on its registry (`transient` false) and one true outcome for each resolved-graph/lockfile dependency not found on its registry (`transient` true) -- these must not be conflated.
+The probe returns one false outcome for each dependency (manifest or lockfile) confirmed to exist.
 The probe returns one error outcome for each dependency whose registry lookup could not be completed.
-If no supported manifests are found, the probe returns one not-applicable outcome.
+If no supported manifests or lockfiles are found, the probe returns one not-applicable outcome.
 
 
 ## hasLicenseFile

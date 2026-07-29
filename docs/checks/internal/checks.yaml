@@ -747,7 +747,7 @@ checks:
     risk: High
     tags: supply-chain, security, dependencies, ai-generated-code
     repos: GitHub, GitLab, local
-    short: Determines if the project's manifests declare dependencies that don't exist on their package registry.
+    short: Determines if the project's manifests or lockfiles declare dependencies that don't exist on their package registry.
     description: |
       Risk: `High`  (supply-chain compromise via "slopsquatting")
 
@@ -765,6 +765,17 @@ checks:
       ingested a hallucinated recommendation without verifying it. A failed registry
       lookup (network error, rate limit, timeout) is reported separately and is not
       scored as hallucination, since it is not evidence of anything.
+
+      The check separately inspects the *resolved* dependency graph via lockfiles
+      (`package-lock.json`, `poetry.lock`, `Pipfile.lock`). This is a different failure
+      mode, not a deeper version of the same one: a lockfile entry is resolved
+      automatically by the package manager from an already-published parent package's
+      own metadata, so no human or AI typed that name into the project. A lockfile
+      entry that fails to resolve indicates a lockfile-integrity problem (tampering, a
+      hand-edited or corrupted lockfile, or an AI tool editing the lockfile directly),
+      not hallucination in the sense above, and is scored separately at half the
+      severity of a direct-manifest hallucination to reflect that lower certainty.
+      `yarn.lock` is not yet supported.
     remediation:
       - >-
         Verify that the dependency name is correct and was not hallucinated by an
@@ -776,6 +787,10 @@ checks:
         Do not install a same-named package found by an AI tool without
         independently verifying its publisher and provenance -- an attacker may
         have registered the hallucinated name.
+      - >-
+        If the finding is a resolved-graph anomaly (a lockfile entry, not a direct
+        manifest entry), regenerate the lockfile from a trusted manifest and verify
+        it was not hand-edited or tampered with.
   Vulnerabilities:
     risk: High
     tags: supply-chain, security, vulnerabilities

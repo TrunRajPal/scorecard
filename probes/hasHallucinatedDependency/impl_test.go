@@ -15,6 +15,7 @@
 package hasHallucinatedDependency
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -112,5 +113,69 @@ func Test_Run(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test_Run_transientDistinction verifies that a resolved-graph anomaly
+// (lockfile entry, Transient: true) and a direct-manifest hallucination
+// (Transient: false) are never conflated: both produce OutcomeTrue, but
+// with distinguishable messages and a transient value callers can group by.
+func Test_Run_transientDistinction(t *testing.T) {
+	t.Parallel()
+
+	raw := &checker.RawResults{
+		HallucinatedDependenciesResults: checker.HallucinatedDependenciesData{
+			Dependencies: []checker.HallucinatedDependency{
+				{
+					Name:      "definitely-not-a-real-package-xyz",
+					Ecosystem: "pypi",
+					Location:  &checker.File{Path: "requirements.txt"},
+					Exists:    asBoolPointer(false),
+					Transient: false,
+				},
+				{
+					Name:      "totally-fake-lockfile-entry-xyz",
+					Ecosystem: "npm",
+					Location:  &checker.File{Path: "package-lock.json"},
+					Exists:    asBoolPointer(false),
+					Transient: true,
+				},
+			},
+		},
+	}
+
+	findings, _, err := Run(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(findings) != 2 {
+		t.Fatalf("got %d findings, want 2", len(findings))
+	}
+
+	direct, transient := findings[0], findings[1]
+
+	if direct.Values[TransientKey] != "false" {
+		t.Errorf("direct finding: got transient=%q, want %q", direct.Values[TransientKey], "false")
+	}
+	if transient.Values[TransientKey] != "true" {
+		t.Errorf("lockfile finding: got transient=%q, want %q", transient.Values[TransientKey], "true")
+	}
+
+	if strings.Contains(direct.Message, "resolved-graph") {
+		t.Errorf("direct finding message should not use resolved-graph framing: %q", direct.Message)
+	}
+	if !strings.Contains(direct.Message, "AI-hallucinated") {
+		t.Errorf("direct finding message should reference AI-hallucination: %q", direct.Message)
+	}
+
+	if !strings.Contains(transient.Message, "resolved-graph") {
+		t.Errorf("lockfile finding message should use resolved-graph framing: %q", transient.Message)
+	}
+	if strings.Contains(transient.Message, "AI-hallucinated package name") {
+		t.Errorf("lockfile finding message should not claim AI-hallucination: %q", transient.Message)
+	}
+
+	if direct.Message == transient.Message {
+		t.Errorf("direct and transient findings must not share the same message")
 	}
 }

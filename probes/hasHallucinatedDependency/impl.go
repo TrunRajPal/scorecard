@@ -17,6 +17,7 @@ package hasHallucinatedDependency
 import (
 	"embed"
 	"fmt"
+	"strconv"
 
 	"github.com/ossf/scorecard/v5/checker"
 	"github.com/ossf/scorecard/v5/finding"
@@ -36,6 +37,16 @@ const (
 	Probe        = "hasHallucinatedDependency"
 	NameKey      = "name"
 	EcosystemKey = "ecosystem"
+	// TransientKey is "true" for dependencies found in a lockfile's
+	// resolved graph and "false" for direct-manifest dependencies. These
+	// are different failure modes when the outcome is True -- a direct
+	// hallucination (an AI or developer typed a non-existent name into a
+	// manifest) versus a resolved-graph anomaly (a lockfile entry that
+	// should have been resolved from an already-real package's own
+	// metadata does not exist, indicating lockfile tampering, corruption,
+	// or an AI tool editing the lockfile directly) -- and must be kept
+	// distinguishable by any caller aggregating these findings.
+	TransientKey = "transient"
 )
 
 func Run(raw *checker.RawResults) ([]finding.Finding, string, error) {
@@ -62,6 +73,7 @@ func Run(raw *checker.RawResults) ([]finding.Finding, string, error) {
 		values := map[string]string{
 			NameKey:      d.Name,
 			EcosystemKey: d.Ecosystem,
+			TransientKey: strconv.FormatBool(d.Transient),
 		}
 
 		switch {
@@ -84,9 +96,14 @@ func Run(raw *checker.RawResults) ([]finding.Finding, string, error) {
 			f = f.WithValues(values)
 			findings = append(findings, *f)
 		case !*d.Exists:
-			f, err := finding.NewWith(fs, Probe,
-				fmt.Sprintf("dependency %q not found on %s -- possible AI-hallucinated package name", d.Name, d.Ecosystem),
-				loc, finding.OutcomeTrue)
+			message := fmt.Sprintf("dependency %q not found on %s -- possible AI-hallucinated package name", d.Name, d.Ecosystem)
+			if d.Transient {
+				message = fmt.Sprintf(
+					"resolved-graph dependency %q not found on %s -- lockfile entry does not resolve "+
+						"(possible lockfile tampering, corruption, or an AI tool editing the lockfile directly; "+
+						"this is NOT the same as a direct-manifest hallucination)", d.Name, d.Ecosystem)
+			}
+			f, err := finding.NewWith(fs, Probe, message, loc, finding.OutcomeTrue)
 			if err != nil {
 				return nil, Probe, fmt.Errorf("create finding: %w", err)
 			}

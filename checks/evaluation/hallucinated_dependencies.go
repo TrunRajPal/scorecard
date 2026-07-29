@@ -38,14 +38,18 @@ func HallucinatedDependencies(name string,
 		return checker.CreateRuntimeErrorResult(name, e)
 	}
 
-	var numHallucinated, numLookupErrors int
+	var numHallucinated, numGraphAnomalies, numLookupErrors int
 	for i := range findings {
 		f := &findings[i]
 		switch f.Outcome {
 		case finding.OutcomeNotApplicable:
 			return checker.CreateInconclusiveResult(name, "no dependency manifests found")
 		case finding.OutcomeTrue:
-			numHallucinated++
+			if f.Values[hasHallucinatedDependency.TransientKey] == "true" {
+				numGraphAnomalies++
+			} else {
+				numHallucinated++
+			}
 			checker.LogFinding(dl, f, checker.DetailWarn)
 		case finding.OutcomeError:
 			// A failed registry lookup is not evidence of hallucination --
@@ -56,12 +60,26 @@ func HallucinatedDependencies(name string,
 		}
 	}
 
-	score := checker.MaxResultScore - numHallucinated
+	// Graph anomalies (lockfile entries that don't resolve) are weighted at
+	// half the severity of direct-manifest hallucinations, not the same
+	// weight. A direct hallucination requires a human or AI to have
+	// actively typed a specific non-existent name into a manifest -- a
+	// deliberate act. A graph anomaly is a categorically less certain
+	// signal: our own negative-set evaluation found a real case
+	// (rx-virtualtime-compat in Reactive-Extensions/RxJS) where a
+	// resolved-graph entry failed to resolve purely from benign registry
+	// rot (an unpublished package from years earlier), not tampering or
+	// hallucination. Scoring both at full weight would treat that
+	// meaningfully weaker signal as equally damning. Integer division
+	// (rounded down) keeps the score an integer without a separate
+	// rounding policy to justify.
+	score := checker.MaxResultScore - numHallucinated - numGraphAnomalies/2
 	if score < checker.MinResultScore {
 		score = checker.MinResultScore
 	}
 
-	reason := fmt.Sprintf("%d dependencies not found on their package registry", numHallucinated)
+	reason := fmt.Sprintf("%d direct dependencies not found on their package registry, "+
+		"%d resolved-graph anomalies", numHallucinated, numGraphAnomalies)
 	if numLookupErrors > 0 {
 		reason = fmt.Sprintf("%s (%d lookups could not be completed)", reason, numLookupErrors)
 	}
