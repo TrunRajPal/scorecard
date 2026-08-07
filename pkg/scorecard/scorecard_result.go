@@ -384,6 +384,12 @@ func assignRawData(probeCheckName string, request *checker.CheckRequest, ret *Re
 			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
 		}
 		ret.RawResults.SBOMResults = rawData
+	case checks.CheckSecretHygiene:
+		rawData, err := raw.SecretHygiene(request)
+		if err != nil {
+			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		}
+		ret.RawResults.SecretHygieneResults = rawData
 	case checks.CheckSecurityPolicy:
 		rawData, err := raw.SecurityPolicy(request)
 		if err != nil {

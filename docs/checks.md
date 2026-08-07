@@ -613,6 +613,48 @@ An SBOM is published as a release artifact (5/10 points):
 - For GitHub, see more information [here](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/about-supply-chain-security).
 - Alternatively, there are other tools available to generate [CycloneDX](https://cyclonedx.org/tool-center/) and [SPDX](https://spdx.dev/use/tools/) SBOMs.
 
+## Secret-Hygiene 
+
+Risk: `Critical`  (direct credential compromise)
+
+This check reports two distinct credential-exposure failure modes, scored separately.
+
+First, a credential present in the **current tree** is an unremediated exposure: anyone who
+can read the repository can use it. Credentials appear in AI-generated code at measurable
+rates — an empirical study of Copilot-generated code found hardcoded credentials (CWE-798)
+in roughly 1.15% of snippets, and researchers have extracted thousands of valid, live
+secrets directly from AI code-completion suggestions, meaning models can emit real
+credentials memorised from training data.
+
+Second, a credential may have been removed from the current tree while remaining fully
+retrievable from **git history**. Deleting a secret in a later commit does not revoke it:
+the historical blob still holds it, so the credential stays exposed to anyone who clones
+the repository until it is rotated at the provider. Detecting this incomplete remediation
+is what distinguishes this check from ordinary secret scanning, which reports only whether
+a credential is present now. This partial-remediation pattern long predates AI tooling and
+is not unique to it; the defensible claim is that AI assistants, which commit at high
+volume, accelerate a known human failure mode rather than introduce a new one.
+
+Only high-confidence, structurally distinctive credential formats are matched (provider
+prefixed tokens and PEM private-key headers). Generic entropy- or keyword-based heuristics
+are deliberately not used, because they are the dominant source of false positives and this
+check is scored. The cost is recall: credentials without a distinctive prefix, such as
+database connection strings, are not detected — mature dedicated scanners cover that
+broader surface. Matched credential values are never written to findings, logs, or output.
+
+History inspection requires git history, which Scorecard's default `archive` file mode does
+not provide. In that mode the check evaluates the current tree only and says so explicitly,
+rather than implying history was clean; run with `--file-mode git` for full coverage. The
+history walk is also bounded to a fixed number of recent commits, so a credential buried
+deeper is not detected.
+ 
+
+**Remediation steps**
+- Rotate the credential at the provider immediately and treat it as compromised. This is the step that actually revokes access, and it is required whether the credential is in the current tree or only in git history.
+- Remove the credential from the code and load it from a secret manager or environment variable instead.
+- If the credential was only removed in a later commit, note that it remains retrievable from git history; after rotating, purge it from history (for example with `git filter-repo`) if the repository's history must also be cleaned.
+- Enable push protection or a pre-commit secret scanner so the next credential is caught before it is committed.
+
 ## Security-Policy 
 
 Risk: `Medium` (possible insecure reporting of vulnerabilities)

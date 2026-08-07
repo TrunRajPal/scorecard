@@ -212,6 +212,24 @@ If no dangerous patterns are found, the probe returns one finding with OutcomeFa
 The probe returns one finding with OutcomeFalse if no untrusted checkouts are detected.
 
 
+## hasExposedSecret
+
+**Lifecycle**: experimental
+
+**Description**: Check whether the project exposes credentials in its current tree or in git history after an incomplete removal.
+
+**Motivation**: Credentials committed to version control are a direct compromise: anyone who can read the repository can use them. Two distinct failure modes are reported separately.
+First, a credential present in the current tree is an unremediated exposure. Secrets appear in AI-generated code at measurable rates -- an empirical study of Copilot-generated code found hardcoded credentials (CWE-798) in roughly 1.15% of snippets, and researchers have extracted thousands of valid, live secrets directly from AI code-completion suggestions, meaning models can emit real credentials memorised from training data.
+Second, and less widely tooled for, a credential may have been removed from the current tree while remaining fully retrievable from git history. Deleting a secret in a later commit does not revoke it: the historical blob still holds it, so the credential stays exposed to anyone who clones the repository until it is rotated at the provider. Security researchers surveying commits whose messages describe removing a credential found large numbers where the credential was still recoverable one commit earlier. This "partial remediation" pattern long predates AI tooling and is not unique to it; the defensible claim is that AI assistants, which commit at high volume, accelerate a known human failure mode rather than introduce a new one. Detecting an incomplete remediation is what distinguishes this probe from ordinary secret scanning, which reports only whether a credential is present now.
+
+**Implementation**: The probe matches only high-confidence, structurally distinctive credential formats -- provider prefixed tokens such as AWS key IDs, GitHub, GitLab, Slack, Stripe, Google, npm, PyPI, SendGrid, OpenAI and Anthropic keys, and PEM private-key headers. Generic entropy- or keyword-based heuristics are deliberately not implemented, because they are the dominant source of false positives and this probe feeds a score. Documentation and template values (AWS's own AKIA...EXAMPLE documentation key, "your-key-here", and similar), .example/.sample/.template files, and vendored, test and documentation paths are all excluded. The cost of this choice is recall: credentials without a distinctive prefix, such as database connection strings or bare high-entropy strings, and credentials committed inside test fixtures or documentation, are not detected.
+Current-tree scanning reads files through the repository client. History scanning requires git history, which Scorecard's default archive file mode does not provide, so it runs only when the repository was fetched with git; otherwise the probe reports a not-available outcome rather than implying history was clean. The history walk is bounded to a fixed number of recent commits, so a credential buried deeper is not detected. Matched credential values are held in memory only, never written to findings, logs, or output.
+
+**Outcomes**: The probe returns one true outcome per detected credential, carrying a `scope` value of `head` (present in the current tree) or `history` (removed from the tree but still retrievable from history). These two are distinct failure modes and must not be merged into a single count.
+If no credential is detected in what was inspected, the probe returns one false outcome.
+If git history could not be inspected, the probe returns an additional not-available outcome, so that a partial evaluation is not mistaken for a clean one.
+
+
 ## hasFSFOrOSIApprovedLicense
 
 **Lifecycle**: stable

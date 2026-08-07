@@ -33,6 +33,7 @@ const (
 	Packaging                CheckName = "Packaging"
 	PinnedDependencies       CheckName = "Pinned-Dependencies"
 	SAST                     CheckName = "SAST"
+	SecretHygiene            CheckName = "Secret-Hygiene"
 	SBOM                     CheckName = "SBOM"
 	SecurityPolicy           CheckName = "Security-Policy"
 	SignedReleases           CheckName = "Signed-Releases"
@@ -57,6 +58,7 @@ var AllValidChecks []string = []string{
 	Packaging,
 	PinnedDependencies,
 	SAST,
+	SecretHygiene,
 	SBOM,
 	SecurityPolicy,
 	SignedReleases,

@@ -44,6 +44,7 @@ type RawResults struct {
 	PackagingResults                PackagingData
 	PinningDependenciesResults      PinningDependenciesData
 	SASTResults                     SASTData
+	SecretHygieneResults            SecretHygieneData
 	SecurityPolicyResults           SecurityPolicyData
 	SignedReleasesResults           SignedReleasesData
 	TokenPermissionsResults         TokenPermissionsData
@@ -164,6 +165,44 @@ type HallucinatedDependency struct {
 	Exists *bool
 	// Error holds the lookup failure message, set only when Exists is nil.
 	Error *string
+}
+
+// SecretHygieneData represents credentials detected in a repository,
+// split into those currently exposed at HEAD and those left retrievable
+// in git history after an incomplete removal.
+type SecretHygieneData struct {
+	Secrets []ExposedSecret
+	// HistoryAvailable reports whether git history could be inspected at
+	// all. Scorecard's default --file-mode archive fetches a tarball with
+	// no history, so the incomplete-remediation half of this check cannot
+	// run in that mode. False must be surfaced as "not evaluated", never
+	// silently treated as "no findings".
+	HistoryAvailable bool
+	// CommitsScanned is how many commits the history walk actually covered.
+	// The walk is bounded for runtime reasons, so a secret buried deeper
+	// than this bound is not detected -- a stated limitation, not a claim
+	// of exhaustiveness. Zero when HistoryAvailable is false.
+	CommitsScanned int
+}
+
+// ExposedSecret represents a single detected credential. The matched
+// value is deliberately never stored on this struct -- see the handling
+// note at the top of checks/raw/secret_hygiene.go.
+type ExposedSecret struct {
+	// DetectorID names the rule that matched, e.g. "aws-access-key-id".
+	DetectorID string
+	Location   *File
+	// InHistory is true when the credential is absent from HEAD but still
+	// retrievable from a historical commit -- i.e. it was "removed" in a
+	// later commit without rewriting history, so it remains exposed to
+	// anyone who clones the repository. This is a distinct finding from a
+	// credential sitting in the current tree, and the two must not be
+	// merged into one count: the former indicates an incomplete
+	// remediation attempt, the latter an unremediated exposure.
+	InHistory bool
+	// CommitSHA identifies the commit in which the credential remains
+	// live. Set only when InHistory is true.
+	CommitSHA string
 }
 
 // Dependency represents a dependency.

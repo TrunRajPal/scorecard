@@ -32,6 +32,7 @@ import (
 	"github.com/ossf/scorecard/v5/probes/hasBinaryArtifacts"
 	"github.com/ossf/scorecard/v5/probes/hasDangerousWorkflowScriptInjection"
 	"github.com/ossf/scorecard/v5/probes/hasDangerousWorkflowUntrustedCheckout"
+	"github.com/ossf/scorecard/v5/probes/hasExposedSecret"
 	"github.com/ossf/scorecard/v5/probes/hasFSFOrOSIApprovedLicense"
 	"github.com/ossf/scorecard/v5/probes/hasHallucinatedDependency"
 	"github.com/ossf/scorecard/v5/probes/hasLicenseFile"
@@ -111,6 +112,9 @@ var (
 	}
 	CodeReview = []ProbeImpl{
 		codeApproved.Run,
+	}
+	SecretHygiene = []ProbeImpl{
+		hasExposedSecret.Run,
 	}
 	SAST = []ProbeImpl{
 		sastToolConfigured.Run,
@@ -199,6 +203,7 @@ func init() {
 		Maintained,
 		Packaging,
 		SAST,
+		SecretHygiene,
 		SecurityPolicy,
 		SignedReleases,
 		Uncategorized,

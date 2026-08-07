@@ -1,0 +1,77 @@
+# Copyright 2026 OpenSSF Scorecard Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+id: hasExposedSecret
+lifecycle: experimental
+short: Check whether the project exposes credentials in its current tree or in git history after an incomplete removal.
+motivation: >
+  Credentials committed to version control are a direct compromise: anyone who can read the
+  repository can use them. Two distinct failure modes are reported separately.
+
+  First, a credential present in the current tree is an unremediated exposure. Secrets appear in
+  AI-generated code at measurable rates -- an empirical study of Copilot-generated code found
+  hardcoded credentials (CWE-798) in roughly 1.15% of snippets, and researchers have extracted
+  thousands of valid, live secrets directly from AI code-completion suggestions, meaning models can
+  emit real credentials memorised from training data.
+
+  Second, and less widely tooled for, a credential may have been removed from the current tree while
+  remaining fully retrievable from git history. Deleting a secret in a later commit does not revoke
+  it: the historical blob still holds it, so the credential stays exposed to anyone who clones the
+  repository until it is rotated at the provider. Security researchers surveying commits whose
+  messages describe removing a credential found large numbers where the credential was still
+  recoverable one commit earlier. This "partial remediation" pattern long predates AI tooling and is
+  not unique to it; the defensible claim is that AI assistants, which commit at high volume,
+  accelerate a known human failure mode rather than introduce a new one. Detecting an incomplete
+  remediation is what distinguishes this probe from ordinary secret scanning, which reports only
+  whether a credential is present now.
+implementation: >
+  The probe matches only high-confidence, structurally distinctive credential formats -- provider
+  prefixed tokens such as AWS key IDs, GitHub, GitLab, Slack, Stripe, Google, npm, PyPI, SendGrid,
+  OpenAI and Anthropic keys, and PEM private-key headers. Generic entropy- or keyword-based
+  heuristics are deliberately not implemented, because they are the dominant source of false
+  positives and this probe feeds a score. Documentation and template values (AWS's own
+  AKIA...EXAMPLE documentation key, "your-key-here", and similar), .example/.sample/.template
+  files, and vendored, test and documentation paths are all excluded. The cost of this choice is
+  recall: credentials without a distinctive prefix, such as database connection strings or bare
+  high-entropy strings, and credentials committed inside test fixtures or documentation, are not
+  detected.
+
+  Current-tree scanning reads files through the repository client. History scanning requires git
+  history, which Scorecard's default archive file mode does not provide, so it runs only when the
+  repository was fetched with git; otherwise the probe reports a not-available outcome rather than
+  implying history was clean. The history walk is bounded to a fixed number of recent commits, so a
+  credential buried deeper is not detected. Matched credential values are held in memory only, never
+  written to findings, logs, or output.
+outcome:
+  - The probe returns one true outcome per detected credential, carrying a `scope` value of `head`
+    (present in the current tree) or `history` (removed from the tree but still retrievable from
+    history). These two are distinct failure modes and must not be merged into a single count.
+  - If no credential is detected in what was inspected, the probe returns one false outcome.
+  - If git history could not be inspected, the probe returns an additional not-available outcome, so
+    that a partial evaluation is not mistaken for a clean one.
+remediation:
+  onOutcome: True
+  effort: High
+  text:
+    - Rotate the credential at the provider immediately and treat it as compromised -- this is the step that actually revokes access, and it is required whether the credential is in the current tree or only in history.
+    - Remove the credential from the code and load it from a secret manager or environment variable instead.
+    - If the credential was only removed in a later commit, note that it remains retrievable from git history; after rotating, purge it from history (for example with git filter-repo) if the repository's history must also be cleaned.
+    - Enable push protection or a pre-commit secret scanner so the next credential is caught before it is committed.
+ecosystem:
+  languages:
+    - all
+  clients:
+    - github
+    - gitlab
+    - localdir
