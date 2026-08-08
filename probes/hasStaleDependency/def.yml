@@ -1,0 +1,72 @@
+# Copyright 2026 OpenSSF Scorecard Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+id: hasStaleDependency
+lifecycle: experimental
+short: Check whether the project pins direct dependencies to versions far behind the current release.
+motivation: >
+  A dependency pinned years behind the current release carries accumulated unpatched risk that no
+  existing check reports. Scorecard's Vulnerabilities check only fires once a CVE has been assigned,
+  so a dependency three years out of date with no CVE yet is invisible to it; Pinned-Dependencies
+  concerns whether a dependency is pinned by hash rather than how old the pinned version is; and
+  Dependency-Update-Tool reports whether an update bot is configured, which is a process signal
+  rather than a statement about the dependencies themselves. Staleness is a leading indicator of
+  risk, whereas known-vulnerability is a lagging one.
+
+  The AI relevance is evidenced but narrower than it might appear. Singla et al. (arXiv:2601.00205),
+  studying 117,062 dependency changes, found AI agents select known-vulnerable dependency versions
+  more often than humans (2.46% versus 1.64%), and that agent-selected vulnerable versions required
+  a major-version upgrade to reach a patched release 36.8% of the time versus 12.9% for humans --
+  that is, agents pick versions that are further behind. That is a measured, direct agent-versus-
+  human comparison. What it does not establish is the mechanism: the study does not attribute this
+  to model training cutoffs, and does not measure version age at all. A stale pin detected by this
+  probe is therefore a condition, not an attribution -- compatibility constraints, deliberate
+  stability policies, and platform limits all produce old pins for entirely legitimate reasons.
+implementation: >
+  The probe reads exactly-pinned direct dependencies -- requirements.txt entries pinned with "=="
+  and package.json entries pinned to an exact version -- and compares each against the ecosystem's
+  registry, using PyPI's per-release upload times and npm's per-version publish times. It reports
+  how many days and how many intervening releases separate the pinned version from the current one.
+  Versions behind are counted by release date rather than by parsing semantic versions, which avoids
+  pre-release ordering ambiguity across two ecosystems with different version grammars.
+
+  Version ranges such as "^1.2.3" are excluded, because a range resolves to the newest matching
+  release and any staleness is not the manifest's doing. Transitive dependencies are excluded
+  because a maintainer cannot change them directly. A dependency is reported as stale when its
+  pinned version is at least 365 days behind the current release; that threshold is a documented
+  policy choice, not an empirical constant. Registry lookups that fail, and pinned versions absent
+  from the registry (yanked, renamed, or private packages), are reported separately and are never
+  scored as staleness.
+outcome:
+  - The probe returns one true outcome per dependency pinned at least 365 days behind the current release.
+  - The probe returns one false outcome per exactly-pinned dependency that is current enough.
+  - The probe returns one error outcome per dependency whose staleness could not be determined.
+  - If the project has no exactly-pinned direct dependencies, the probe returns one not-applicable
+    outcome, since there is nothing to measure -- this is deliberately not treated as a pass.
+remediation:
+  onOutcome: True
+  effort: Low
+  text:
+    - Update the dependency to a current release, or document why the older version is required.
+    - If the pin exists for compatibility, record that reason next to it so the constraint is visible to future maintainers and to automated review.
+    - Consider a version range or an automated update tool (Dependabot, Renovate) so security patches are picked up without manual intervention.
+    - If the pin was suggested by an AI coding assistant, check it against the current release rather than assuming the suggested version is current -- a model's knowledge of a package reflects its training data, not today's registry.
+ecosystem:
+  languages:
+    - python
+    - javascript
+  clients:
+    - github
+    - gitlab
+    - localdir

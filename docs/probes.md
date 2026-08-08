@@ -375,6 +375,24 @@ If an SBOM artifact is not found, the probe returns a single OutcomeFalse.
 If an SBOM file is not found, the probe returns a single OutcomeFalse.
 
 
+## hasStaleDependency
+
+**Lifecycle**: experimental
+
+**Description**: Check whether the project pins direct dependencies to versions far behind the current release.
+
+**Motivation**: A dependency pinned years behind the current release carries accumulated unpatched risk that no existing check reports. Scorecard's Vulnerabilities check only fires once a CVE has been assigned, so a dependency three years out of date with no CVE yet is invisible to it; Pinned-Dependencies concerns whether a dependency is pinned by hash rather than how old the pinned version is; and Dependency-Update-Tool reports whether an update bot is configured, which is a process signal rather than a statement about the dependencies themselves. Staleness is a leading indicator of risk, whereas known-vulnerability is a lagging one.
+The AI relevance is evidenced but narrower than it might appear. Singla et al. (arXiv:2601.00205), studying 117,062 dependency changes, found AI agents select known-vulnerable dependency versions more often than humans (2.46% versus 1.64%), and that agent-selected vulnerable versions required a major-version upgrade to reach a patched release 36.8% of the time versus 12.9% for humans -- that is, agents pick versions that are further behind. That is a measured, direct agent-versus- human comparison. What it does not establish is the mechanism: the study does not attribute this to model training cutoffs, and does not measure version age at all. A stale pin detected by this probe is therefore a condition, not an attribution -- compatibility constraints, deliberate stability policies, and platform limits all produce old pins for entirely legitimate reasons.
+
+**Implementation**: The probe reads exactly-pinned direct dependencies -- requirements.txt entries pinned with "==" and package.json entries pinned to an exact version -- and compares each against the ecosystem's registry, using PyPI's per-release upload times and npm's per-version publish times. It reports how many days and how many intervening releases separate the pinned version from the current one. Versions behind are counted by release date rather than by parsing semantic versions, which avoids pre-release ordering ambiguity across two ecosystems with different version grammars.
+Version ranges such as "^1.2.3" are excluded, because a range resolves to the newest matching release and any staleness is not the manifest's doing. Transitive dependencies are excluded because a maintainer cannot change them directly. A dependency is reported as stale when its pinned version is at least 365 days behind the current release; that threshold is a documented policy choice, not an empirical constant. Registry lookups that fail, and pinned versions absent from the registry (yanked, renamed, or private packages), are reported separately and are never scored as staleness.
+
+**Outcomes**: The probe returns one true outcome per dependency pinned at least 365 days behind the current release.
+The probe returns one false outcome per exactly-pinned dependency that is current enough.
+The probe returns one error outcome per dependency whose staleness could not be determined.
+If the project has no exactly-pinned direct dependencies, the probe returns one not-applicable outcome, since there is nothing to measure -- this is deliberately not treated as a pass.
+
+
 ## hasUnverifiedBinaryArtifacts
 
 **Lifecycle**: stable

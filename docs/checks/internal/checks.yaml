@@ -844,6 +844,57 @@ checks:
       - >-
         Enable push protection or a pre-commit secret scanner so the next credential is caught
         before it is committed.
+  Stale-Dependencies:
+    risk: Medium
+    tags: supply-chain, security, dependencies, ai-generated-code
+    repos: GitHub, GitLab, local
+    short: Determines if the project pins direct dependencies to versions far behind the current release.
+    description: |
+      Risk: `Medium` (accumulated unpatched risk ahead of any assigned CVE)
+
+      This check measures how far behind the current release each exactly-pinned direct
+      dependency is, in both elapsed days and number of intervening releases.
+
+      No existing Scorecard check covers this. `Vulnerabilities` only fires once a CVE has
+      been assigned, so a dependency three years out of date with no CVE yet is invisible to
+      it. `Pinned-Dependencies` concerns whether a dependency is pinned by hash rather than
+      how old the pinned version is — a hash-pinned 2019 release scores perfectly.
+      `Dependency-Update-Tool` reports whether an update bot is configured, which is a process
+      signal rather than a statement about the dependencies themselves. Staleness is a
+      *leading* indicator of risk; known-vulnerability is a *lagging* one.
+
+      The AI relevance is evidenced, but narrower than it may appear. Singla et al.
+      (arXiv:2601.00205), studying 117,062 dependency changes, found AI agents select
+      known-vulnerable dependency versions more often than humans (2.46% vs 1.64%), and that
+      agent-selected vulnerable versions required a major-version upgrade to reach a patched
+      release 36.8% of the time versus 12.9% for humans — that is, agents pick versions that
+      are further behind. What that study does *not* establish is the mechanism: it does not
+      attribute the behaviour to model training cutoffs, and does not measure version age at
+      all. A finding from this check is therefore a condition, not an attribution:
+      compatibility constraints, deliberate stability policies, and platform limits all
+      produce old pins for entirely legitimate reasons.
+
+      Only exact pins in direct manifests are assessed. Version ranges such as `^1.2.3`
+      resolve to the newest matching release, so any staleness is not the manifest's doing,
+      and transitive dependencies are excluded because a maintainer cannot change them
+      directly. A dependency is reported as stale at 365 days behind the current release; that
+      threshold is a documented policy choice, not an empirical constant. Lookups that fail,
+      and pinned versions absent from the registry, are reported separately and never scored
+      as staleness.
+    remediation:
+      - >-
+        Update the dependency to a current release, or document why the older version is
+        required.
+      - >-
+        If the pin exists for compatibility, record that reason next to it so the constraint
+        is visible to future maintainers and to automated review.
+      - >-
+        Consider a version range or an automated update tool (Dependabot, Renovate) so
+        security patches are picked up without manual intervention.
+      - >-
+        If the pin was suggested by an AI coding assistant, check it against the current
+        release rather than assuming the suggested version is current — a model's knowledge of
+        a package reflects its training data, not today's registry.
   Vulnerabilities:
     risk: High
     tags: supply-chain, security, vulnerabilities

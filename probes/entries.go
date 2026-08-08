@@ -43,6 +43,7 @@ import (
 	"github.com/ossf/scorecard/v5/probes/hasRecentCommits"
 	"github.com/ossf/scorecard/v5/probes/hasReleaseSBOM"
 	"github.com/ossf/scorecard/v5/probes/hasSBOM"
+	"github.com/ossf/scorecard/v5/probes/hasStaleDependency"
 	"github.com/ossf/scorecard/v5/probes/hasUnverifiedBinaryArtifacts"
 	"github.com/ossf/scorecard/v5/probes/issueActivityByProjectMember"
 	"github.com/ossf/scorecard/v5/probes/jobLevelPermissions"
@@ -115,6 +116,9 @@ var (
 	}
 	SecretHygiene = []ProbeImpl{
 		hasExposedSecret.Run,
+	}
+	StaleDependencies = []ProbeImpl{
+		hasStaleDependency.Run,
 	}
 	SAST = []ProbeImpl{
 		sastToolConfigured.Run,
@@ -205,6 +209,7 @@ func init() {
 		SAST,
 		SecretHygiene,
 		SecurityPolicy,
+		StaleDependencies,
 		SignedReleases,
 		Uncategorized,
 		Vulnerabilities,

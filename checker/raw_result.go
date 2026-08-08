@@ -45,6 +45,7 @@ type RawResults struct {
 	PinningDependenciesResults      PinningDependenciesData
 	SASTResults                     SASTData
 	SecretHygieneResults            SecretHygieneData
+	StaleDependenciesResults        StaleDependenciesData
 	SecurityPolicyResults           SecurityPolicyData
 	SignedReleasesResults           SignedReleasesData
 	TokenPermissionsResults         TokenPermissionsData
@@ -164,6 +165,41 @@ type HallucinatedDependency struct {
 	// hallucination and must not be scored as such -- see Error.
 	Exists *bool
 	// Error holds the lookup failure message, set only when Exists is nil.
+	Error *string
+}
+
+// StaleDependenciesData represents dependencies pinned to an exact version
+// in a direct manifest, measured against the newest release available on
+// the ecosystem's registry.
+//
+// This measures a condition, not a cause. A stale pin is not evidence that
+// an AI tool produced it: compatibility constraints, deliberate stability
+// policies, and platform limits all produce old pins for good reasons. See
+// DESIGN_STALE_PINNING.md for the evidence base and its limits.
+type StaleDependenciesData struct {
+	Dependencies []StaleDependency
+}
+
+// StaleDependency is one exactly-pinned dependency and how far behind the
+// newest release it is.
+type StaleDependency struct {
+	Name          string
+	Ecosystem     string // "pypi" or "npm"
+	PinnedVersion string
+	LatestVersion string
+	Location      *File
+	// DaysBehind is the gap between the pinned version's release date and
+	// the newest release's date. Zero when the pin is the newest release.
+	DaysBehind int
+	// VersionsBehind counts releases published after the pinned one.
+	// Counted by release date rather than by parsing semantic versions,
+	// which avoids pre-release ordering ambiguity across two ecosystems
+	// with different version grammars.
+	VersionsBehind int
+	// Error holds a lookup failure message. Set when staleness could not be
+	// determined -- an unreachable registry or a pinned version absent from
+	// the registry is not evidence of staleness and must not be scored as
+	// such.
 	Error *string
 }
 

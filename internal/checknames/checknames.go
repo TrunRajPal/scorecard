@@ -34,6 +34,7 @@ const (
 	PinnedDependencies       CheckName = "Pinned-Dependencies"
 	SAST                     CheckName = "SAST"
 	SecretHygiene            CheckName = "Secret-Hygiene"
+	StaleDependencies        CheckName = "Stale-Dependencies"
 	SBOM                     CheckName = "SBOM"
 	SecurityPolicy           CheckName = "Security-Policy"
 	SignedReleases           CheckName = "Signed-Releases"
@@ -59,6 +60,7 @@ var AllValidChecks []string = []string{
 	PinnedDependencies,
 	SAST,
 	SecretHygiene,
+	StaleDependencies,
 	SBOM,
 	SecurityPolicy,
 	SignedReleases,
