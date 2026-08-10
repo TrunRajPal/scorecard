@@ -65,7 +65,7 @@ func TestParsePackageJSON(t *testing.T) {
 	}`)
 
 	var results checker.HallucinatedDependenciesData
-	if _, err := parsePackageJSON("package.json", content, &results); err != nil {
+	if _, err := parsePackageJSON("package.json", content, &packageJSONArgs{results: &results, local: map[string]bool{}}); err != nil {
 		t.Fatalf("parsePackageJSON: %v", err)
 	}
 
@@ -84,6 +84,92 @@ func TestParsePackageJSON(t *testing.T) {
 	}
 	if got["local-pkg"] {
 		t.Errorf("local-pkg is a file: dependency and should have been skipped")
+	}
+}
+
+// TestResolveNpmAlias covers a false positive found during the AIDev
+// evaluation. In lidofinance/core:
+//
+//	"@openzeppelin/contracts-v4.4": "npm:@openzeppelin/contracts@4.4.1"
+//
+// The key is an arbitrary local alias used to install two major versions
+// side by side; the package actually fetched is in the value. Checking the
+// alias against npm reports a hallucination for a legitimate pattern.
+func TestResolveNpmAlias(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, version, want string
+	}{
+		{"@openzeppelin/contracts-v4.4", "npm:@openzeppelin/contracts@4.4.1", "@openzeppelin/contracts"},
+		{"contracts-v5", "npm:@openzeppelin/contracts@5.2.0", "@openzeppelin/contracts"},
+		{"my-lodash", "npm:lodash@4.17.21", "lodash"},
+		{"aliased-no-version", "npm:some-package", "some-package"},
+		// Not an alias: the name is used as-is.
+		{"express", "^4.18.2", "express"},
+		{"@scope/pkg", "1.0.0", "@scope/pkg"},
+	}
+	for _, tt := range tests {
+		if got := resolveNpmAlias(tt.name, tt.version); got != tt.want {
+			t.Errorf("resolveNpmAlias(%q, %q) = %q, want %q", tt.name, tt.version, got, tt.want)
+		}
+	}
+}
+
+// TestPackageJSONSkipsWorkspaceLocalPackages covers the second false
+// positive found during the AIDev evaluation. In tambo-ai/tambo, a
+// workspace monorepo, an internal package is depended on by name and
+// resolved to a sibling directory -- it is never published to npm, so
+// checking it against the registry reports a hallucination for a package
+// sitting in the same repository.
+func TestPackageJSONSkipsWorkspaceLocalPackages(t *testing.T) {
+	t.Parallel()
+	content := []byte(`{
+		"name": "@tambo-ai/api",
+		"dependencies": {
+			"@tambo-ai/eslint-config": "*",
+			"@tambo-ai-cloud/core": "*",
+			"express": "^4.18.2",
+			"aliased": "npm:lodash@4.17.21",
+			"linked": "link:../other",
+			"portalled": "portal:../another"
+		}
+	}`)
+
+	// Names this repository defines itself, as gathered by
+	// collectLocalPackageNames from every package.json in the tree.
+	local := map[string]bool{
+		"@tambo-ai/eslint-config": true,
+		"@tambo-ai-cloud/core":    true,
+		"@tambo-ai/api":           true,
+	}
+
+	var results checker.HallucinatedDependenciesData
+	if _, err := parsePackageJSON("apps/api/package.json", content,
+		&packageJSONArgs{results: &results, local: local}); err != nil {
+		t.Fatalf("parsePackageJSON: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, d := range results.Dependencies {
+		got[d.Name] = true
+	}
+
+	for _, skipped := range []string{
+		"@tambo-ai/eslint-config", "@tambo-ai-cloud/core", "linked", "portalled",
+	} {
+		if got[skipped] {
+			t.Errorf("%q is resolved locally and must not be checked against the registry", skipped)
+		}
+	}
+	if !got["express"] {
+		t.Errorf("a genuine registry dependency must still be checked, got %+v", got)
+	}
+	// The alias must be recorded under the package actually fetched.
+	if !got["lodash"] {
+		t.Errorf("aliased dependency should be checked as %q, got %+v", "lodash", got)
+	}
+	if got["aliased"] {
+		t.Errorf("the alias label itself must not be checked against the registry")
 	}
 }
 

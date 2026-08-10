@@ -282,6 +282,16 @@ func TestIsNonProductionPath(t *testing.T) {
 		"docs/reference/api-v1.2.rst",
 		"docs/using_deis/using-buildpacks.rst",
 		"doc/setup.md",
+		// Markdown anywhere, added on AIDev-evaluation evidence: eight AWS
+		// key IDs in pulumi/examples README samples and a PEM header in a
+		// thirdweb-dev/js documentation page were all documentation.
+		"README.md",
+		"aws-cs-assume-role/README.md",
+		"apps/portal/src/app/engine/v2/features/keypair-authentication/page.mdx",
+		// Test directories whose name embeds the marker rather than being
+		// exactly "testdata" -- kubernetes-sigs/headlamp in the AIDev set.
+		"backend/cmd/headlamp_testdata/headlamp.key",
+		"integration-tests/fixtures/key.pem",
 	}
 	for _, p := range excluded {
 		if !isNonProductionPath(p) {
@@ -297,7 +307,9 @@ func TestIsNonProductionPath(t *testing.T) {
 		"app/settings.py",
 		"contrib/linode/apply-firewall.py",
 		"wxbot_project_py2.7/config/wechat.conf.bak",
-		"README.md",
+		// "latest" contains "test" but is not a test directory -- guards
+		// against a naive substring match on test directory names.
+		"build/latest/config.yaml",
 	}
 	for _, p := range included {
 		if isNonProductionPath(p) {

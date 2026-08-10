@@ -35,7 +35,7 @@ func TestParseNpmLockfileV2V3(t *testing.T) {
 	}`)
 
 	var results checker.HallucinatedDependenciesData
-	if _, err := parseNpmLockfile("package-lock.json", content, &results); err != nil {
+	if _, err := parseNpmLockfile("package-lock.json", content, &packageJSONArgs{results: &results, local: map[string]bool{}}); err != nil {
 		t.Fatalf("parseNpmLockfile: %v", err)
 	}
 
@@ -64,6 +64,62 @@ func TestParseNpmLockfileV2V3(t *testing.T) {
 	}
 }
 
+// TestParseNpmLockfileResolvesAliasesAndWorkspaces covers the false
+// positives that the AIDev evaluation surfaced. Every remaining detection
+// after the first fix round was an npm alias recorded in the lockfile,
+// where the node_modules directory is the alias but npm stores the real
+// package in "name" -- e.g. @openai/codex-darwin-arm64 -> @openai/codex
+// (siteboon/claudecodeui), @ai-sdk/provider-v5 -> @ai-sdk/provider
+// (tambo-ai/tambo).
+func TestParseNpmLockfileResolvesAliasesAndWorkspaces(t *testing.T) {
+	t.Parallel()
+	content := []byte(`{
+		"name": "test",
+		"lockfileVersion": 3,
+		"packages": {
+			"": { "name": "test", "version": "1.0.0" },
+			"packages/eslint-config": { "name": "@internal/eslint-config", "version": "1.0.0" },
+			"node_modules/@internal/eslint-config": { "resolved": "packages/eslint-config", "link": true },
+			"node_modules/@openai/codex-darwin-arm64": { "name": "@openai/codex", "version": "0.144.1" },
+			"node_modules/@ai-sdk/provider-v5": { "name": "@ai-sdk/provider", "version": "2.0.0" },
+			"node_modules/express": { "version": "4.18.2" },
+			"node_modules/genuinely-fake-pkg": { "version": "1.0.0" }
+		}
+	}`)
+
+	var results checker.HallucinatedDependenciesData
+	local := map[string]bool{"@internal/eslint-config": true, "test": true}
+	if _, err := parseNpmLockfile("package-lock.json", content,
+		&packageJSONArgs{results: &results, local: local}); err != nil {
+		t.Fatalf("parseNpmLockfile: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, d := range results.Dependencies {
+		got[d.Name] = true
+	}
+
+	// Aliases must resolve to the package actually fetched.
+	for _, want := range []string{"@openai/codex", "@ai-sdk/provider", "express", "genuinely-fake-pkg"} {
+		if !got[want] {
+			t.Errorf("expected %q to be collected, got %+v", want, got)
+		}
+	}
+	// The alias labels themselves must never be checked against the registry.
+	for _, alias := range []string{"@openai/codex-darwin-arm64", "@ai-sdk/provider-v5"} {
+		if got[alias] {
+			t.Errorf("alias %q must not be checked against the registry", alias)
+		}
+	}
+	// Workspace packages are resolved locally, by symlink and by directory.
+	if got["@internal/eslint-config"] {
+		t.Errorf("a workspace package must not be checked against the registry")
+	}
+	if got["test"] {
+		t.Errorf("the root project must not be collected as a dependency")
+	}
+}
+
 func TestParseNpmLockfileV1(t *testing.T) {
 	t.Parallel()
 	content := []byte(`{
@@ -81,7 +137,7 @@ func TestParseNpmLockfileV1(t *testing.T) {
 	}`)
 
 	var results checker.HallucinatedDependenciesData
-	if _, err := parseNpmLockfile("package-lock.json", content, &results); err != nil {
+	if _, err := parseNpmLockfile("package-lock.json", content, &packageJSONArgs{results: &results, local: map[string]bool{}}); err != nil {
 		t.Fatalf("parseNpmLockfile: %v", err)
 	}
 
@@ -103,7 +159,7 @@ func TestParseNpmLockfileV1(t *testing.T) {
 func TestParseNpmLockfileMalformed(t *testing.T) {
 	t.Parallel()
 	var results checker.HallucinatedDependenciesData
-	cont, err := parseNpmLockfile("package-lock.json", []byte("not valid json"), &results)
+	cont, err := parseNpmLockfile("package-lock.json", []byte("not valid json"), &packageJSONArgs{results: &results, local: map[string]bool{}})
 	if err != nil {
 		t.Fatalf("parseNpmLockfile should not error on malformed content, got: %v", err)
 	}

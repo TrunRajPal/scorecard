@@ -171,6 +171,36 @@ var nonProductionFileMarkers = []string{
 	"_test.", ".test.", "_spec.", ".spec.", "do_not_use", "donotuse",
 }
 
+// documentationExtensions are file types that exist to be read rather than
+// executed. Credential-shaped strings in them are overwhelmingly examples.
+//
+// Markdown is included on the evidence of the AIDev evaluation, which
+// flagged eight AWS key IDs inside JSON samples in pulumi/examples README
+// files and a PEM header inside a thirdweb-dev/js documentation page. Both
+// are documentation doing its job. Because a current-tree detection scores
+// the minimum, leaving markdown in scope means a project can be scored
+// 0/10 for illustrating a credential format in its own docs.
+//
+// The recall cost is real and accepted: a credential genuinely pasted into
+// a README is now missed. That is the same precision-over-recall trade
+// already taken for vendored, test and reStructuredText paths, and it is
+// made for the same reason -- this check is scored, so a false positive is
+// more damaging than a miss.
+var documentationExtensions = []string{
+	".md", ".mdx", ".markdown", ".rst", ".adoc", ".textile",
+}
+
+// testDirSuffixes catch directories whose name embeds a test marker rather
+// than being exactly "test"/"testdata". Matching the segment exactly missed
+// kubernetes-sigs/headlamp's "headlamp_testdata" directory in the AIDev
+// evaluation.
+//
+// Deliberately not a bare "test" substring check: that would also exclude
+// any path containing the word "latest".
+var testDirSuffixes = []string{
+	"_test", "-test", "_tests", "-tests", "_spec", "-spec",
+}
+
 // isNonProductionPath reports whether a path is vendored, test, or
 // documentation material -- see the note on nonProductionDirSegments.
 func isNonProductionPath(pathfn string) bool {
@@ -179,6 +209,16 @@ func isNonProductionPath(pathfn string) bool {
 	for _, segment := range strings.Split(lower, "/") {
 		if nonProductionDirSegments[segment] {
 			return true
+		}
+		// Directories whose name embeds a test marker, e.g.
+		// "headlamp_testdata" or "integration-tests".
+		if strings.Contains(segment, "testdata") || strings.Contains(segment, "testfixtures") {
+			return true
+		}
+		for _, suffix := range testDirSuffixes {
+			if strings.HasSuffix(segment, suffix) {
+				return true
+			}
 		}
 	}
 
@@ -191,8 +231,12 @@ func isNonProductionPath(pathfn string) bool {
 	if strings.HasPrefix(base, "test_") || strings.HasPrefix(base, "test-") {
 		return true
 	}
-	// reStructuredText is essentially always documentation.
-	return strings.HasSuffix(base, ".rst")
+	for _, ext := range documentationExtensions {
+		if strings.HasSuffix(base, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // isPlaceholder reports whether a matched value is a documentation or

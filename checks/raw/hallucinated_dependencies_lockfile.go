@@ -58,11 +58,15 @@ import (
 // the existing direct-manifest parser. That is a partial existing
 // mitigation for that specific case, not a gap requiring new code here.
 
-func collectNpmLockfile(c *checker.CheckRequest, r *checker.HallucinatedDependenciesData) error {
+func collectNpmLockfile(
+	c *checker.CheckRequest,
+	r *checker.HallucinatedDependenciesData,
+	local map[string]bool,
+) error {
 	return fileparser.OnMatchingFileContentDo(c.RepoClient, fileparser.PathMatcher{
 		Pattern:       "package-lock.json",
 		CaseSensitive: false,
-	}, parseNpmLockfile, r)
+	}, parseNpmLockfile, &packageJSONArgs{results: r, local: local})
 }
 
 // npmLockV1 models lockfileVersion 1: a "dependencies" object, nested
@@ -82,7 +86,33 @@ type npmLockV1Dep struct {
 // de-duplicated transient package). This is what current `npm install`
 // produces.
 type npmLockV2 struct {
-	Packages map[string]json.RawMessage `json:"packages"`
+	Packages map[string]npmLockV2Entry `json:"packages"`
+}
+
+// npmLockV2Entry is the per-package metadata npm records alongside each
+// node_modules path.
+//
+// The Name field is what makes aliases resolvable. When a dependency is
+// installed under an alias, the directory is the alias but npm records the
+// real package in "name":
+//
+//	"node_modules/@openai/codex-darwin-arm64": {
+//	    "name": "@openai/codex", "version": "0.144.1-darwin-arm64" }
+//
+// Deriving the package name from the directory path alone therefore yields
+// the alias, which does not exist on the registry and is reported as a
+// hallucination. Every remaining false positive in the AIDev evaluation was
+// this pattern (npm aliases in tambo-ai/tambo, EdgeApp/edge-react-gui and
+// siteboon/claudecodeui). Using npm's own recorded name is exact rather
+// than heuristic.
+//
+// Link marks a workspace symlink -- an internal package resolved to a
+// sibling directory, never fetched from the registry.
+type npmLockV2Entry struct {
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Resolved string `json:"resolved"`
+	Link     bool   `json:"link"`
 }
 
 var parseNpmLockfile fileparser.DoWhileTrueOnFileContent = func(
@@ -94,21 +124,37 @@ var parseNpmLockfile fileparser.DoWhileTrueOnFileContent = func(
 		return false, fmt.Errorf(
 			"parseNpmLockfile requires exactly 1 argument: got %v: %w", len(args), errInvalidArgLength)
 	}
-	r, ok := args[0].(*checker.HallucinatedDependenciesData)
+	a, ok := args[0].(*packageJSONArgs)
 	if !ok {
-		return false, fmt.Errorf("%w: expected *checker.HallucinatedDependenciesData", errInvalidArgType)
+		return false, fmt.Errorf("%w: expected *packageJSONArgs", errInvalidArgType)
 	}
+	r := a.results
 
 	// Try v2/v3 "packages" format first -- this is what current npm produces.
 	var v2 npmLockV2
 	if err := json.Unmarshal(content, &v2); err == nil && len(v2.Packages) > 0 {
 		seen := map[string]bool{}
-		for path := range v2.Packages {
+		for path, entry := range v2.Packages {
 			if path == "" {
 				continue // "" is the root project itself, not a dependency.
 			}
-			name := lastNodeModulesSegment(path)
-			if name == "" || seen[name] {
+			if entry.Link {
+				continue // a workspace symlink, resolved locally.
+			}
+			// Only entries under node_modules are installed dependencies. A
+			// workspace package also appears keyed by its own directory
+			// (e.g. "packages/eslint-config"); that is resolved locally, not
+			// fetched from the registry, so it is skipped here.
+			if lastNodeModulesSegment(path) == "" {
+				continue
+			}
+			// Prefer npm's own recorded name: for an aliased install the
+			// directory is the alias but "name" is the real package.
+			name := entry.Name
+			if name == "" {
+				name = lastNodeModulesSegment(path)
+			}
+			if seen[name] || a.local[name] {
 				continue
 			}
 			seen[name] = true
@@ -139,6 +185,9 @@ var parseNpmLockfile fileparser.DoWhileTrueOnFileContent = func(
 	var walk func(m map[string]npmLockV1Dep)
 	walk = func(m map[string]npmLockV1Dep) {
 		for name, entry := range m {
+			if a.local[name] {
+				continue
+			}
 			if !seen[name] {
 				seen[name] = true
 				r.Dependencies = append(r.Dependencies, checker.HallucinatedDependency{
