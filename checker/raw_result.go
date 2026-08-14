@@ -27,6 +27,7 @@ import (
 //
 //nolint:govet
 type RawResults struct {
+	AgentConfigResults              AgentConfigData
 	BinaryArtifactResults           BinaryArtifactData
 	BranchProtectionResults         BranchProtectionsData
 	CIIBestPracticesResults         CIIBestPracticesData
@@ -166,6 +167,71 @@ type HallucinatedDependency struct {
 	Exists *bool
 	// Error holds the lookup failure message, set only when Exists is nil.
 	Error *string
+}
+
+// AgentConfigData represents risky constructs found in the configuration
+// files that AI coding agents read and act on -- instruction files such as
+// AGENTS.md, CLAUDE.md and .cursorrules, and Model Context Protocol server
+// definitions such as .mcp.json.
+//
+// These files are an instruction channel with the reach of code: an agent
+// reads them and acts. Unlike source code they are rarely reviewed with the
+// same scrutiny, and MCP definitions in particular are executed on the
+// developer's machine rather than in CI.
+//
+// SCOPE. This check reports *structural* constructs whose presence is a
+// matter of fact: characters that cannot legitimately appear in prose, and
+// server definitions that fetch and execute unpinned remote code. It does
+// NOT attempt to judge whether natural-language instructions are malicious
+// in intent. That has no objective oracle, and so no measurable
+// false-positive rate -- the same reasoning that excluded the tautological
+// test-suite check. See DESIGN_AGENT_CONFIG.md.
+type AgentConfigData struct {
+	Findings []AgentConfigFinding
+	// ConfigFilesFound counts the agent configuration files discovered,
+	// whether or not anything was flagged in them. Zero means the check has
+	// nothing to assess, which must be surfaced as "not applicable" rather
+	// than as a pass.
+	ConfigFilesFound int
+}
+
+// AgentConfigRisk identifies which structural construct was found.
+type AgentConfigRisk string
+
+const (
+	// AgentConfigHiddenInstruction is a character that cannot legitimately
+	// appear in prose: the Unicode Tags block (U+E0000-U+E007F), used to
+	// smuggle instructions invisible to a human reviewer, or a bidirectional
+	// override (the Trojan Source technique, CVE-2021-42574) that makes
+	// rendered text differ from what the agent parses.
+	//
+	// Zero-width joiners and non-joiners are deliberately NOT included:
+	// they are required orthographic characters in Indic, Persian and Khmer
+	// scripts, and flagging them misreports translated documentation as an
+	// attack. This exclusion was derived from measurement, not anticipated.
+	AgentConfigHiddenInstruction AgentConfigRisk = "hiddenInstruction"
+
+	// AgentConfigUnpinnedRemoteExec is an MCP server definition that fetches
+	// and runs a package at launch without pinning a version -- typically
+	// `npx -y some-server@latest`. The code executed is whatever the
+	// registry serves at that moment, so what was reviewed once is not what
+	// runs later.
+	AgentConfigUnpinnedRemoteExec AgentConfigRisk = "unpinnedRemoteExec"
+
+	// AgentConfigShellExec is an MCP server definition that invokes a shell
+	// or a downloader directly, or pipes fetched content into one.
+	AgentConfigShellExec AgentConfigRisk = "shellExec"
+)
+
+// AgentConfigFinding is one risky construct in one agent configuration file.
+type AgentConfigFinding struct {
+	Risk AgentConfigRisk
+	// Detail describes the construct without reproducing attacker-controlled
+	// content. Hidden-character findings report code points, never the
+	// decoded text, so that a smuggled instruction cannot be replayed
+	// through a report or a log into another agent's context.
+	Detail   string
+	Location *File
 }
 
 // StaleDependenciesData represents dependencies pinned to an exact version

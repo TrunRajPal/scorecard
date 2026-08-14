@@ -920,6 +920,59 @@ checks:
         Details on the structure of `osv-scanner.toml` can be found on 
         [OSV-Scanner repository](https://github.com/google/osv-scanner#ignore-vulnerabilities-by-id).
 
+  Dangerous-Agent-Config:
+    risk: High
+    tags: supply-chain, security, ai-generated-code, prompt-injection
+    repos: GitHub, GitLab, local
+    short: Determines if AI agent configuration files contain hidden instructions or execute unpinned remote code.
+    description: |
+      Risk: `High` (arbitrary local code execution; instruction injection invisible to review)
+
+      AI coding agents read configuration files from the repository and act on them:
+      instruction files such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules` and
+      `.cursor/rules/*.mdc`, and Model Context Protocol server definitions such as
+      `.mcp.json`. These files are an instruction channel with the reach of code, but they
+      are reviewed as documentation, and no existing check covers them.
+
+      Two classes of construct are reported.
+
+      **Hidden instructions.** Characters that cannot legitimately appear in prose: the
+      Unicode Tags block (U+E0000–U+E007F), whose only current use is to smuggle text past a
+      human reviewer while remaining fully legible to a model, and explicit bidirectional
+      overrides — the Trojan Source technique of CVE-2021-42574 — where rendered text differs
+      from what is parsed.
+
+      **Unpinned or shell-based execution.** MCP server definitions that fetch and run a
+      package at launch without an exact version pin, or that invoke a shell directly.
+      CVE-2025-54136 ("MCPoison") demonstrated the consequence: an attacker modified a
+      previously approved server definition and the editor re-executed it as trusted, with no
+      further prompt. Unlike CI, these commands run on the developer's own machine.
+
+      The scope is deliberately narrow. This check does **not** judge whether natural-language
+      instructions are malicious in intent. That question has no objective oracle and
+      therefore no measurable false-positive rate; reporting only constructs with a definite
+      answer is what makes the result auditable.
+
+      Zero-width joiners and non-joiners are excluded from the hidden-character test. They are
+      required orthographic characters in Indic, Persian and Khmer scripts, and measurement
+      against real repositories showed them throughout translated documentation — flagging
+      them would report correct translations as attacks.
+
+      A repository with no agent configuration files is reported as inconclusive rather than
+      passing: crediting a project for not using AI tooling would make the check reward
+      absence rather than safety.
+    remediation:
+      - >-
+        Remove invisible and bidirectional-override characters from agent instruction files.
+        Legitimate documentation does not require them.
+      - >-
+        Pin MCP server packages to an exact version rather than a mutable tag such as
+        `@latest`, so that the code executed is the code that was reviewed.
+      - >-
+        Treat agent instruction and MCP configuration files as executable content in code
+        review: require the same scrutiny for a change to `.cursorrules` or `.mcp.json` as for
+        a change to a build script.
+
   Dangerous-Workflow:
     risk: Critical
     tags: supply-chain, security, infrastructure

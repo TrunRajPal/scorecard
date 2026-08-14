@@ -390,6 +390,12 @@ func assignRawData(probeCheckName string, request *checker.CheckRequest, ret *Re
 			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
 		}
 		ret.RawResults.SecretHygieneResults = rawData
+	case checks.CheckDangerousAgentConfig:
+		rawData, err := raw.AgentConfig(request)
+		if err != nil {
+			return sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		}
+		ret.RawResults.AgentConfigResults = rawData
 	case checks.CheckStaleDependencies:
 		rawData, err := raw.StaleDependencies(request)
 		if err != nil {

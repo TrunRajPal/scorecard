@@ -184,6 +184,25 @@ If no fuzzing tool is found, or the project uses a tool we don't detect, one fin
 If the probe finds no binary files, it returns a single OutcomeFalse.
 
 
+## hasDangerousAgentConfig
+
+**Lifecycle**: experimental
+
+**Description**: Check whether AI agent configuration files contain hidden instructions or definitions that execute unpinned remote code.
+
+**Motivation**: AI coding agents read configuration files from the repository and act on them: instruction files such as AGENTS.md, CLAUDE.md, .cursorrules and .cursor/rules/*.mdc, and Model Context Protocol server definitions such as .mcp.json. These files are an instruction channel with the reach of code, yet they are reviewed as documentation and are not covered by any existing check.
+Two constructs are reported. The first is characters that cannot legitimately appear in prose: the Unicode Tags block (U+E0000-U+E007F), whose only current use is to smuggle text past a human reviewer while remaining fully legible to a model, and bidirectional overrides, the Trojan Source technique of CVE-2021-42574, where rendered text differs from what is parsed. The second is MCP server definitions that fetch and execute unpinned remote code at launch, or invoke a shell directly. CVE-2025-54136 ("MCPoison") demonstrated the consequence: an attacker modified a previously approved server definition, and the editor re-executed it as trusted with no further prompt.
+Scope is deliberately narrow. This probe does not judge whether natural-language instructions are malicious in intent. That question has no objective oracle, and therefore no measurable false-positive rate. Reporting only constructs with a definite answer is what makes the result auditable.
+Zero-width joiners and non-joiners are excluded from the hidden-character test. They are required orthographic characters in Indic, Persian and Khmer scripts; measurement against real repositories showed they appear throughout translated documentation, so flagging them would report correct translations as attacks.
+
+**Implementation**: The probe reads agent instruction files and MCP configuration files through the repository client. Instruction files are scanned for runes in the Unicode Tags block and for explicit bidirectional overrides and isolates. MCP configuration files are parsed as JSON, and each server definition carrying a "command" is examined: definitions invoking a shell or downloader are reported, as are package runners such as npx or uvx whose package argument carries no exact version pin. Server definitions addressing a remote "url" are not reported, since they do not execute code locally.
+Findings never reproduce the content that triggered them. Hidden-character findings report code points and counts, so that smuggled text cannot be replayed through a report into another reader's -- or another agent's -- context.
+
+**Outcomes**: If an agent configuration file contains a hidden-instruction character, or an MCP definition executes unpinned remote code or a shell, the probe returns OutcomeTrue, one finding per construct.
+If agent configuration files exist but contain none of these constructs, the probe returns OutcomeFalse.
+If the repository has no agent configuration files at all, the probe returns OutcomeNotApplicable. Having nothing to assess is not a pass.
+
+
 ## hasDangerousWorkflowScriptInjection
 
 **Lifecycle**: stable

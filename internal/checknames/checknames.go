@@ -24,6 +24,7 @@ const (
 	CITests                  CheckName = "CI-Tests"
 	CodeReview               CheckName = "Code-Review"
 	Contributors             CheckName = "Contributors"
+	DangerousAgentConfig     CheckName = "Dangerous-Agent-Config"
 	DangerousWorkflow        CheckName = "Dangerous-Workflow"
 	DependencyUpdateTool     CheckName = "Dependency-Update-Tool"
 	Fuzzing                  CheckName = "Fuzzing"
@@ -50,6 +51,7 @@ var AllValidChecks []string = []string{
 	CITests,
 	CodeReview,
 	Contributors,
+	DangerousAgentConfig,
 	DangerousWorkflow,
 	DependencyUpdateTool,
 	Fuzzing,

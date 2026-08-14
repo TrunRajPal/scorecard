@@ -1,0 +1,71 @@
+# Copyright 2026 OpenSSF Scorecard Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+id: hasDangerousAgentConfig
+lifecycle: experimental
+short: Check whether AI agent configuration files contain hidden instructions or definitions that execute unpinned remote code.
+motivation: >
+  AI coding agents read configuration files from the repository and act on them: instruction files
+  such as AGENTS.md, CLAUDE.md, .cursorrules and .cursor/rules/*.mdc, and Model Context Protocol
+  server definitions such as .mcp.json. These files are an instruction channel with the reach of
+  code, yet they are reviewed as documentation and are not covered by any existing check.
+
+  Two constructs are reported. The first is characters that cannot legitimately appear in prose:
+  the Unicode Tags block (U+E0000-U+E007F), whose only current use is to smuggle text past a human
+  reviewer while remaining fully legible to a model, and bidirectional overrides, the Trojan Source
+  technique of CVE-2021-42574, where rendered text differs from what is parsed. The second is MCP
+  server definitions that fetch and execute unpinned remote code at launch, or invoke a shell
+  directly. CVE-2025-54136 ("MCPoison") demonstrated the consequence: an attacker modified a
+  previously approved server definition, and the editor re-executed it as trusted with no further
+  prompt.
+
+  Scope is deliberately narrow. This probe does not judge whether natural-language instructions are
+  malicious in intent. That question has no objective oracle, and therefore no measurable
+  false-positive rate. Reporting only constructs with a definite answer is what makes the result
+  auditable.
+
+  Zero-width joiners and non-joiners are excluded from the hidden-character test. They are required
+  orthographic characters in Indic, Persian and Khmer scripts; measurement against real
+  repositories showed they appear throughout translated documentation, so flagging them would
+  report correct translations as attacks.
+implementation: >
+  The probe reads agent instruction files and MCP configuration files through the repository client.
+  Instruction files are scanned for runes in the Unicode Tags block and for explicit bidirectional
+  overrides and isolates. MCP configuration files are parsed as JSON, and each server definition
+  carrying a "command" is examined: definitions invoking a shell or downloader are reported, as are
+  package runners such as npx or uvx whose package argument carries no exact version pin. Server
+  definitions addressing a remote "url" are not reported, since they do not execute code locally.
+
+  Findings never reproduce the content that triggered them. Hidden-character findings report code
+  points and counts, so that smuggled text cannot be replayed through a report into another
+  reader's -- or another agent's -- context.
+outcome:
+  - If an agent configuration file contains a hidden-instruction character, or an MCP definition
+    executes unpinned remote code or a shell, the probe returns OutcomeTrue, one finding per
+    construct.
+  - If agent configuration files exist but contain none of these constructs, the probe returns
+    OutcomeFalse.
+  - If the repository has no agent configuration files at all, the probe returns
+    OutcomeNotApplicable. Having nothing to assess is not a pass.
+remediation:
+  onOutcome: True
+  effort: Low
+  text:
+    - Remove invisible and bidirectional-override characters from `${{ metadata.repo }}` agent
+      instruction files. Legitimate documentation does not require them.
+    - Pin MCP server packages to an exact version rather than a mutable tag, so that the code
+      executed is the code that was reviewed.
+    - Treat agent instruction and MCP configuration files as executable content in code review.
+      A change to `.cursorrules` or `.mcp.json` warrants the same scrutiny as a change to a build
+      script.
