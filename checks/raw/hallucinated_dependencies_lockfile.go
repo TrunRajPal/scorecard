@@ -62,11 +62,12 @@ func collectNpmLockfile(
 	c *checker.CheckRequest,
 	r *checker.HallucinatedDependenciesData,
 	local map[string]bool,
+	nonRegistry map[string]bool,
 ) error {
 	return fileparser.OnMatchingFileContentDo(c.RepoClient, fileparser.PathMatcher{
 		Pattern:       "package-lock.json",
 		CaseSensitive: false,
-	}, parseNpmLockfile, &packageJSONArgs{results: r, local: local})
+	}, parseNpmLockfile, &packageJSONArgs{results: r, local: local, nonRegistry: nonRegistry})
 }
 
 // npmLockV1 models lockfileVersion 1: a "dependencies" object, nested
@@ -154,7 +155,7 @@ var parseNpmLockfile fileparser.DoWhileTrueOnFileContent = func(
 			if name == "" {
 				name = lastNodeModulesSegment(path)
 			}
-			if seen[name] || a.local[name] {
+			if seen[name] || a.local[name] || a.nonRegistry[name] {
 				continue
 			}
 			seen[name] = true
@@ -185,7 +186,7 @@ var parseNpmLockfile fileparser.DoWhileTrueOnFileContent = func(
 	var walk func(m map[string]npmLockV1Dep)
 	walk = func(m map[string]npmLockV1Dep) {
 		for name, entry := range m {
-			if a.local[name] {
+			if a.local[name] || a.nonRegistry[name] {
 				continue
 			}
 			if !seen[name] {

@@ -49,7 +49,6 @@ package raw
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -70,7 +69,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/uvlock"
 
 	"github.com/ossf/scorecard/v5/checker"
-	"github.com/ossf/scorecard/v5/checks/fileparser"
 	"github.com/ossf/scorecard/v5/finding"
 )
 
@@ -415,49 +413,3 @@ func (i repoFileInfo) Mode() fs.FileMode {
 func (i repoFileInfo) ModTime() time.Time { return time.Time{} }
 func (i repoFileInfo) IsDir() bool        { return i.dir }
 func (i repoFileInfo) Sys() any           { return nil }
-
-// collectNonRegistryNames returns the dependency names that some package.json
-// in the repository installs from a URL, a git remote, a local path or a
-// workspace.
-//
-// WHY THIS EXISTS. A lockfile records such a dependency by name and version
-// like any other, and scalibr's Package struct carries nothing to distinguish
-// it -- @bbc/reverb-url-helper@2.5.0 from a tarball URL is indistinguishable
-// from a registry package of the same name and version. Checking it against
-// the registry then reports a hallucination for a dependency that was never
-// meant to come from the registry at all.
-//
-// The corpus comparison found exactly this: @bbc/reverb-url-helper
-// (bbc/simorgh) and @aragon/apps-lido (lidofinance/core), both declared with
-// https:// specs in package.json and both recorded in yarn.lock. The
-// hand-written parsers never hit it only because they cannot read yarn.lock.
-//
-// The manifest is therefore used as the authority on install source, and the
-// resulting names are excluded wherever they appear.
-func collectNonRegistryNames(c *checker.CheckRequest) (map[string]bool, error) {
-	names := map[string]bool{}
-	err := fileparser.OnMatchingFileContentDo(c.RepoClient, fileparser.PathMatcher{
-		Pattern:       "package.json",
-		CaseSensitive: false,
-	}, func(pathfn string, content []byte, _ ...any) (bool, error) {
-		var pkg struct {
-			Dependencies    map[string]string `json:"dependencies"`
-			DevDependencies map[string]string `json:"devDependencies"`
-		}
-		if err := json.Unmarshal(content, &pkg); err != nil {
-			return true, nil
-		}
-		for _, set := range []map[string]string{pkg.Dependencies, pkg.DevDependencies} {
-			for name, version := range set {
-				if isNonRegistrySpec(version) {
-					names[name] = true
-				}
-			}
-		}
-		return true, nil
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("collect non-registry names: %w", err)
-	}
-	return names, nil
-}

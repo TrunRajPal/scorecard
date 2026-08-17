@@ -286,3 +286,85 @@ func TestParsePipfileLockMalformed(t *testing.T) {
 		t.Errorf("expected no dependencies from malformed content, got %+v", results.Dependencies)
 	}
 }
+
+// TestParseNpmLockfileSkipsNonRegistryInstalls covers a latent false positive
+// found by diffing the hand-written parsers against the osv-scalibr path.
+//
+// A dependency declared in package.json with a URL, git remote, local path or
+// workspace spec is still recorded in the lockfile by name. Checking that name
+// against the registry reports a hallucination for a dependency that was never
+// meant to come from the registry.
+//
+// Real cases: @bbc/reverb-url-helper (bbc/simorgh, tarball URL),
+// @aragon/apps-lido (lidofinance/core, GitHub archive), and
+// react-native-custom-tabs / react-native-store-review
+// (EdgeApp/edge-react-gui, GitHub URLs). None was flagged in evaluation only
+// because those names happen to also exist on npm -- a URL-installed package
+// whose name is absent from the registry would have been a false positive.
+func TestParseNpmLockfileSkipsNonRegistryInstalls(t *testing.T) {
+	t.Parallel()
+	content := []byte(`{
+		"name": "test",
+		"lockfileVersion": 3,
+		"packages": {
+			"": { "name": "test", "version": "1.0.0" },
+			"node_modules/@bbc/reverb-url-helper": { "version": "2.5.0" },
+			"node_modules/react-native-custom-tabs": { "version": "0.1.0" },
+			"node_modules/express": { "version": "4.18.2" },
+			"node_modules/genuinely-fake-pkg": { "version": "1.0.0" }
+		}
+	}`)
+
+	var results checker.HallucinatedDependenciesData
+	nonRegistry := map[string]bool{
+		"@bbc/reverb-url-helper":   true,
+		"react-native-custom-tabs": true,
+	}
+	if _, err := parseNpmLockfile("package-lock.json", content, &packageJSONArgs{
+		results: &results, local: map[string]bool{}, nonRegistry: nonRegistry,
+	}); err != nil {
+		t.Fatalf("parseNpmLockfile: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, d := range results.Dependencies {
+		got[d.Name] = true
+	}
+	for _, skipped := range []string{"@bbc/reverb-url-helper", "react-native-custom-tabs"} {
+		if got[skipped] {
+			t.Errorf("%q is installed from a URL and must not be checked against the registry", skipped)
+		}
+	}
+	for _, want := range []string{"express", "genuinely-fake-pkg"} {
+		if !got[want] {
+			t.Errorf("expected %q to still be collected, got %+v", want, got)
+		}
+	}
+}
+
+// TestIsNonRegistrySpec pins the specs that mean "not fetched from the
+// registry", shared by the manifest and lockfile passes.
+func TestIsNonRegistrySpec(t *testing.T) {
+	t.Parallel()
+	nonRegistry := []string{
+		"https://mybbc-analytics.files.bbci.co.uk/pkg-2.5.0.tgz",
+		"http://example.com/pkg.tgz",
+		"git+ssh://git@github.com/org/repo.git",
+		"github:org/repo",
+		"file:../local-pkg",
+		"link:../sibling",
+		"portal:../sibling",
+		"workspace:*",
+	}
+	for _, v := range nonRegistry {
+		if !isNonRegistrySpec(v) {
+			t.Errorf("isNonRegistrySpec(%q) = false, want true", v)
+		}
+	}
+	registry := []string{"4.18.2", "^1.2.3", "~2.0.0", "*", "latest", "npm:real-pkg@1.0.0"}
+	for _, v := range registry {
+		if isNonRegistrySpec(v) {
+			t.Errorf("isNonRegistrySpec(%q) = true, want false", v)
+		}
+	}
+}
