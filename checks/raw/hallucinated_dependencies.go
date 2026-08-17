@@ -61,6 +61,14 @@ var registryHTTPClient = &http.Client{Timeout: 10 * time.Second}
 // checker.HallucinatedDependency.Transient and
 // hallucinated_dependencies_lockfile.go.
 func HallucinatedDependencies(c *checker.CheckRequest) (checker.HallucinatedDependenciesData, error) {
+	// An experimental extractor built on osv-scalibr can be selected with
+	// SCORECARD_HALLUCINATED_DEPS_EXTRACTOR=scalibr. It is off by default:
+	// the parsers below are the ones validated against this project's four
+	// evaluation corpora. See hallucinated_dependencies_scalibr.go.
+	if useScalibrExtractor() {
+		return collectViaScalibr(c)
+	}
+
 	var results checker.HallucinatedDependenciesData
 
 	// Collected first: a package this repository defines itself is resolved
@@ -280,15 +288,23 @@ var parsePackageJSON fileparser.DoWhileTrueOnFileContent = func(
 	return true, nil
 }
 
+// isNonRegistrySpec reports whether a package.json version spec installs from
+// somewhere other than the registry -- a URL, a git remote, a local path or a
+// workspace. Such a dependency has no registry entry to look up, so its
+// absence from the registry is expected rather than suspicious.
+func isNonRegistrySpec(version string) bool {
+	return strings.HasPrefix(version, "file:") ||
+		strings.HasPrefix(version, "git") ||
+		strings.HasPrefix(version, "http") ||
+		strings.HasPrefix(version, "link:") ||
+		strings.HasPrefix(version, "portal:") ||
+		strings.HasPrefix(version, "workspace:")
+}
+
 func addPackageJSONDeps(pathfn string, content []byte, deps map[string]string, a *packageJSONArgs) {
 	for name, version := range deps {
 		// Skip local/workspace/URL-based deps -- not registry lookups.
-		if strings.HasPrefix(version, "file:") ||
-			strings.HasPrefix(version, "git") ||
-			strings.HasPrefix(version, "http") ||
-			strings.HasPrefix(version, "link:") ||
-			strings.HasPrefix(version, "portal:") ||
-			strings.HasPrefix(version, "workspace:") {
+		if isNonRegistrySpec(version) {
 			continue
 		}
 		// A package this repository defines itself is resolved locally by
