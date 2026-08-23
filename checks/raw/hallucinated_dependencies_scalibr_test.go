@@ -196,3 +196,29 @@ func TestScalibrLockfilesMarkedTransient(t *testing.T) {
 		}
 	}
 }
+
+// TestScalibrPyPINamesAreNormalised guards the third of the three defects the
+// extractor comparison surfaced. scalibr's lockfile extractors preserve the
+// spelling a manifest happens to use, so poetry.lock's "Django" arrives as
+// "Django" where the hand-written parser yields "django". Normalising only the
+// lookup key would leave the two paths reporting different names for the same
+// package, and would double the registry lookups they each cache.
+//
+// The fix normalises the STORED name in hallucinated_dependencies_scalibr.go.
+// This test fails if that normalisation is moved back to the lookup site.
+func TestScalibrPyPINamesAreNormalised(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		raw, want string
+	}{
+		{"Django", "django"},
+		{"Mastodon.py", "mastodon-py"},
+		{"zope.interface", "zope-interface"},
+		{"Flask_SQLAlchemy", "flask-sqlalchemy"},
+		{"  requests  ", "requests"},
+	} {
+		if got := normalizePyPIName(tt.raw); got != tt.want {
+			t.Errorf("normalizePyPIName(%q) = %q, want %q", tt.raw, got, tt.want)
+		}
+	}
+}

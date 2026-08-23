@@ -38,12 +38,14 @@ const (
 	// StaleThresholdDays is the age at which an exact pin is reported as
 	// stale.
 	//
-	// This is a POLICY CHOICE, not an empirical constant. The reasoning: a
-	// model's training cutoff typically precedes its use by roughly 6-18
-	// months, so a year is the point at which a pin is more plausibly
-	// explained by stale knowledge than by a deliberate compatibility
-	// decision. That is a rationale for picking a threshold -- it is not
-	// evidence that any individual pin came from a model, and this probe
+	// This is a POLICY CHOICE, not an empirical constant, and the reasoning
+	// behind it is an assumption rather than a measurement: that a model's
+	// training cutoff precedes its use by something on the order of months
+	// to a year, so a year is a defensible point at which a pin is more
+	// plausibly explained by stale knowledge than by a deliberate
+	// compatibility decision. No published figure is cited for that interval
+	// because none was found. It is a rationale for picking a threshold --
+	// not evidence that any individual pin came from a model, and this probe
 	// makes no such claim about any finding.
 	StaleThresholdDays = 365
 
