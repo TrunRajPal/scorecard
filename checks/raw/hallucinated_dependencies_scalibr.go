@@ -32,7 +32,7 @@
 // to every other decision in this project.
 //
 // WHAT SCALIBR BUYS. Extractors for lockfile formats the hand-written
-// parsers do not cover -- yarn.lock, pnpm-lock.yaml, bun.lock, uv.lock,
+// parsers do not cover -- yarn.lock, pnpm-lock.yaml, uv.lock,
 // pdm.lock -- maintained by a third party and already an indirect
 // dependency of upstream Scorecard via osv-scanner. No new module is added
 // to go.mod by this file.
