@@ -12,6 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// ---------------------------------------------------------------------------
+// CONTRIBUTED WORK. Written for the ELE8095 Individual Research Project
+// (DC03), Queen's University Belfast: "Extending Open-Source Software
+// Security Metrics for AI-Generated Code". Author: Trun Raj Pal, 40498374.
+//
+// Not part of upstream github.com/ossf/scorecard. Any file in this
+// repository without this notice is upstream code by the OpenSSF Scorecard
+// Authors, used under the Apache 2.0 licence above.
+// ---------------------------------------------------------------------------
+
 package hasHallucinatedDependency
 
 import (
