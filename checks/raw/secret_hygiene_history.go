@@ -188,71 +188,107 @@ func scanCommitForRemovedSecrets(
 		return fmt.Errorf("commit.Parent: %w", err)
 	}
 
-	// Diff parent -> commit, so Delete chunks are content this commit
-	// removed and which therefore still lives in the parent.
-	patch, err := parent.Patch(commit)
+	// Diff parent -> commit at the TREE level first, so every exclusion can
+	// be applied before any patch is computed.
+	//
+	// This is deliberately not parent.Patch(commit). That call diffs the
+	// whole commit eagerly, and go-diff encodes each unique line of a diff
+	// as a Unicode rune, so a file with more than 1,114,112 lines panics
+	// inside the dependency rather than returning an error -- which no
+	// amount of error handling here can catch. Scorecard's own history
+	// contains a 69.6 MB CSV that triggers exactly that. Diffing per change
+	// lets the size ceiling below run first, so an oversized file is never
+	// handed to the differ at all.
+	parentTree, err := parent.Tree()
 	if err != nil {
-		return fmt.Errorf("commit.Patch: %w", err)
+		return fmt.Errorf("parent.Tree: %w", err)
+	}
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return fmt.Errorf("commit.Tree: %w", err)
+	}
+	changes, err := object.DiffTree(parentTree, commitTree)
+	if err != nil {
+		return fmt.Errorf("object.DiffTree: %w", err)
 	}
 
-	filePatches := patch.FilePatches()
-	if len(filePatches) > maxHistoryFilePatches {
+	if len(changes) > maxHistoryFilePatches {
 		return nil
 	}
 
-	for _, fp := range filePatches {
-		if fp.IsBinary() {
-			continue
+	for _, change := range changes {
+		from, _, err := change.Files()
+		if err != nil {
+			continue // an unreadable blob is not evidence of anything.
 		}
-		from, _ := fp.Files()
 		if from == nil {
 			continue // a newly added file has no removed content.
 		}
-		path := from.Path()
+		path := change.From.Name
 		// Same vendored/test/documentation exclusion as the current-tree
 		// scan, so the two categories stay comparable: a difference between
 		// them should reflect remediation behaviour, not differing filters.
 		if fileIsInVendorDir(path) || isTemplatePath(path) || isNonProductionPath(path) {
 			continue
 		}
+		// The same 1 MiB ceiling the current-tree scan applies, enforced
+		// here BEFORE the diff rather than after it. Previously this bound
+		// existed only inside scanForSecrets, by which point the expensive
+		// and crash-prone work had already happened.
+		if from.Size > maxScannedFileSize {
+			continue
+		}
+		if binary, err := from.IsBinary(); err != nil || binary {
+			continue
+		}
 
-		for _, chunk := range fp.Chunks() {
-			if chunk.Type() != diff.Delete {
+		patch, err := change.Patch()
+		if err != nil {
+			continue // a diff we cannot compute is not a finding.
+		}
+		for _, fp := range patch.FilePatches() {
+			if fp.IsBinary() {
 				continue
 			}
-			for _, s := range scanForSecrets([]byte(chunk.Content())) {
-				// Still in the current tree: that is an unremediated
-				// exposure, already reported by the HEAD scan. Reporting it
-				// here as well would double-count and conflate the two
-				// categories.
-				if headValues[s.Value] {
-					continue
-				}
-				key := s.DetectorID + "\x00" + s.Value + "\x00" + path
-				if reported[key] {
-					continue
-				}
-				reported[key] = true
 
-				results.Secrets = append(results.Secrets, checker.ExposedSecret{
-					DetectorID: s.DetectorID,
-					InHistory:  true,
-					// The credential remains retrievable from the parent,
-					// which is the commit that still holds it.
-					CommitSHA: parent.Hash.String(),
-					Location: &checker.File{
-						Path: path,
-						Type: finding.FileTypeSource,
-						// Resolved against the parent commit's blob, so the
-						// line refers to the historical file that still
-						// contains the credential -- not to the current
-						// tree, where it is absent. The probe's message
-						// names the commit so this is not misread as a
-						// current-tree location. Snippet stays empty: it
-						// would carry the credential value.
-						Offset: lineOfValueInCommitFile(parent, path, s.Value),
-					},
-				})
+			for _, chunk := range fp.Chunks() {
+				if chunk.Type() != diff.Delete {
+					continue
+				}
+				for _, s := range scanForSecrets([]byte(chunk.Content())) {
+					// Still in the current tree: that is an unremediated
+					// exposure, already reported by the HEAD scan. Reporting it
+					// here as well would double-count and conflate the two
+					// categories.
+					if headValues[s.Value] {
+						continue
+					}
+					key := s.DetectorID + "\x00" + s.Value + "\x00" + path
+					if reported[key] {
+						continue
+					}
+					reported[key] = true
+
+					results.Secrets = append(results.Secrets, checker.ExposedSecret{
+						DetectorID: s.DetectorID,
+						InHistory:  true,
+						// The credential remains retrievable from the parent,
+						// which is the commit that still holds it.
+						CommitSHA: parent.Hash.String(),
+						Location: &checker.File{
+							Path: path,
+							Type: finding.FileTypeSource,
+							// Resolved against the parent commit's blob, so the
+							// line refers to the historical file that still
+							// contains the credential -- not to the current
+							// tree, where it is absent. The probe's message
+							// names the commit so this is not misread as a
+							// current-tree location. Snippet stays empty: it
+							// would carry the credential value.
+							Offset: lineOfValueInCommitFile(parent, path, s.Value),
+						},
+					})
+				}
 			}
 		}
 	}

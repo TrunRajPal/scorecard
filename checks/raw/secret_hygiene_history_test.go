@@ -41,6 +41,7 @@ package raw
 // blocks these patterns when written as whole literals. Do not inline them.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -300,5 +301,63 @@ func TestHistoryNeverRecordsTheCredentialValue(t *testing.T) {
 				t.Error("a credential value reached an exported field")
 			}
 		}
+	}
+}
+
+// TestHistorySkipsOversizedFilesBeforeDiffing is a regression test for a
+// crash, not a feature test.
+//
+// The history walk used to call parent.Patch(commit), which diffs the whole
+// commit eagerly. go-diff encodes each unique line of a diff as a Unicode
+// rune, so a file with more than 1,114,112 lines panics inside the
+// dependency:
+//
+//	panic: Error encoding an int 1 with size 4, got rune 65533 ...
+//
+// A panic in a dependency cannot be recovered by returning an error here, so
+// the whole Scorecard process died. Running the check against Scorecard's own
+// repository reproduced it: cron/internal/data/projects.csv is 69.6 MB.
+//
+// The fix diffs per tree change and applies maxScannedFileSize before any
+// patch is computed. This test builds a file past that ceiling, removes it in
+// a later commit, and asserts the walk completes. It fails by panicking, not
+// by reporting a wrong count.
+func TestHistorySkipsOversizedFilesBeforeDiffing(t *testing.T) {
+	t.Parallel()
+
+	// One line per iteration, comfortably past maxScannedFileSize so the
+	// ceiling is what excludes it.
+	var oversized strings.Builder
+	for i := 0; oversized.Len() <= maxScannedFileSize; i++ {
+		fmt.Fprintf(&oversized, "row %d,value,padding-to-make-the-line-wide\n", i)
+	}
+
+	dir := newHistoryFixture(t, []commitSpec{
+		{files: map[string]string{"data/rows.csv": oversized.String()}},
+		{deleted: []string{"data/rows.csv"}},
+		// A normal removal in the same history, so the test also proves the
+		// walk still works rather than merely surviving.
+		{files: map[string]string{"config.go": "const key = \"" + fxAWSKeyID + "\"\n"}},
+		{deleted: []string{"config.go"}},
+	})
+
+	results := runHistory(t, dir, map[string]bool{})
+
+	var oversizedFindings, normalFindings int
+	for i := range results.Secrets {
+		switch results.Secrets[i].Location.Path {
+		case "data/rows.csv":
+			oversizedFindings++
+		case "config.go":
+			normalFindings++
+		}
+	}
+	if oversizedFindings != 0 {
+		t.Errorf("oversized file: got %d findings, want 0 (it is past the size ceiling)",
+			oversizedFindings)
+	}
+	if normalFindings != 1 {
+		t.Errorf("normal removal alongside an oversized file: got %d findings, want 1",
+			normalFindings)
 	}
 }
